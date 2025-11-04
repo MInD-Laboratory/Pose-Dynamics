@@ -123,3 +123,45 @@ def interocular_series(df: pd.DataFrame, conf_prefix: Optional[str] = None) -> p
             warnings.warn(f"Found {too_large.sum()} frames with suspiciously large inter-ocular distance (>0.5)")
 
     return distance
+
+def resample(df, target_rate=30, dt_col="dt_ms"):
+    """Resample using dt_ms increments instead of timestamp_ns."""
+    # cumulative sum of ms → seconds
+    df["time_s"] = df[dt_col].cumsum() / 1000.0
+    df.loc[0, "time_s"] = 0.0  # force first row to 0
+    
+    # set as index
+    df = df.set_index("time_s")
+    
+    # uniform timeline at target rate
+    start, end = df.index.min(), df.index.max()
+    new_index = np.arange(start, end, 1/target_rate)
+    
+    # interpolate onto uniform grid
+    df = df.reindex(df.index.union(new_index)).interpolate("linear").loc[new_index]
+    
+    return df.reset_index().rename(columns={"index": "time_s"})
+
+def align_pair(df1, df2):
+    # Assume both already resampled to 30 Hz
+    start = max(df1["time_s"].min(), df2["time_s"].min())
+    end   = min(df1["time_s"].max(), df2["time_s"].max())
+
+    # Restrict both to common overlap
+    df1_aligned = df1[(df1["time_s"] >= start) & (df1["time_s"] <= end)]
+    df2_aligned = df2[(df2["time_s"] >= start) & (df2["time_s"] <= end)]
+
+    # Ensure equal length
+    min_len = min(len(df1_aligned), len(df2_aligned))
+    return df1_aligned.iloc[:min_len].reset_index(drop=True), \
+           df2_aligned.iloc[:min_len].reset_index(drop=True)
+
+def normalize_data(data, norm):
+    if norm == 1:
+        return (data - np.min(data)) / (np.max(data) - np.min(data))  # Unit interval
+    elif norm == 2:
+        return (data - np.mean(data)) / np.std(data)  # Z-score
+    elif norm == 3:
+        return data - np.mean(data)  # Center around mean
+    else:
+        return data  # No normalization

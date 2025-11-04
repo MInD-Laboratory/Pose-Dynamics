@@ -323,3 +323,209 @@ def butterworth_filter(df: pd.DataFrame, cutoff: float = 10.0, order: int = 4, f
     for c in out.columns:
         out[c] = signal_utils.butterworth_segment_filter(out[c], order=order, cutoff_hz=cutoff, fs=fs)
     return out
+
+
+
+# for 3d pose data processing functions
+# ZED skeleton connections
+SKELETON_CONNECTIONS = {
+    "face": [    
+        ("9", "7"),   # Right ear to right eye  
+        ("7", "5"),   # Right eye to nose  
+        ("5", "6"),   # Nose to left eye
+        ("6", "8"),   # Left eye to left ear
+        ("5", "4"),   # Nose to mouth
+        ("4", "3"),   # Mouth to neck
+    ],
+    "body": [
+        ("3", "10"),    # Neck to left shoulder
+        ("3", "2"),     # Neck to mid chest
+        ("2","1"),      # Mid chest to stomach
+        ("1", "0"),     # Stomach to pelvis
+        ("10", "12"),   # Left shoulder to left bicep
+        ("12", "14"),   # Left bicep to left elbow
+        ("14", "16"),   # Left elbow to left wrist
+        ("16", "30"),   # Left wrist to left finger 1
+        ("16", "32"),   # Left wrist to left finger 2
+        ("16", "34"),   # Left wrist to left finger 3
+        ("16", "36"),   # Left wrist to left finger 4
+        ("3", "11"),    # Neck to right shoulder
+        ("11", "13"),   # Right shoulder to right bicep
+        ("13", "15"),   # Right bicep to right elbow
+        ("15", "17"),   # Right elbow to right wrist
+        ("17", "31"),   # Right wrist to right finger 1
+        ("17", "33"),   # Right wrist to right finger 2
+        ("17", "35"),   # Right wrist to right finger 3
+        ("17", "37"),   # Right wrist to right finger 4
+    ],
+    "legs": [
+        ("0", "19"),    # Pelvis to right hip
+        ("19", "21"),   # Right hip to right knee
+        ("21", "23"),   # Right knee to right ankle
+        ("23", "29"),   # Right ankle to right heel
+        ("23", "27"),   # Right ankle to right outer foot
+        ("23", "25"),   # Right ankle to right inner foot
+        ("0", "18"),    # Pelvis to left hip
+        ("18", "20"),   # Left hip to left knee
+        ("20", "22"),   # Left knee to left ankle
+        ("22", "28"),   # Left ankle to left heel
+        ("22", "26"),   # Left ankle to left outer foot
+        ("22", "24"),   # Left ankle to left inner foot
+    ]
+}
+
+def build_edge_list(connections, include=("face","body","legs")):
+    edges = []
+    for k in include:
+        for i, j in connections.get(k, []):
+            edges.append((int(i), int(j)))
+    return edges
+
+edges = build_edge_list(SKELETON_CONNECTIONS, include=("body","legs","face"))
+
+def order_xyz_triplets(columns):
+    idxs = sorted({int(c[1:]) for c in columns if (c[0] in ("x","y","z") and c[1:].isdigit())})
+    ordered = []
+    for i in idxs:
+        t = [f"x{i}", f"y{i}", f"z{i}"]
+        if all(col in columns for col in t):
+            ordered.extend(t)
+    return ordered
+
+def compute_procrustes_transform_3d(template, trial_mean, allow_rotation=True, allow_scale=False):
+    T0 = template.mean(axis=0)
+    M0 = trial_mean.mean(axis=0)
+    Tc = template - T0
+    Mc = trial_mean - M0
+    nT, nM = np.linalg.norm(Tc), np.linalg.norm(Mc)
+    if nT < 1e-12 or nM < 1e-12:
+        return np.eye(3), 1.0, (T0 - M0)
+
+    Tc_n, Mc_n = Tc / nT, Mc / nM
+    if allow_rotation:
+        H = Mc_n.T @ Tc_n
+        U, _, Vt = np.linalg.svd(H)
+        R = U @ Vt
+        if np.linalg.det(R) < 0:
+            Vt[-1,:] *= -1
+            R = U @ Vt
+    else:
+        R = np.eye(3)
+
+    s = 1.0
+    if allow_scale:
+        num = np.trace((Mc @ R).T @ Tc)
+        den = (Mc**2).sum()
+        s = float(num / max(den, 1e-12))
+
+    t = T0 - (s * M0 @ R)
+    return R, s, t
+
+def align_keypoints_3d(df, expected_cols=None, ref_idx=None,
+                       template=None, use_procrustes=False,
+                       allow_rotation=True, allow_scale=False):
+    cols = expected_cols if expected_cols else order_xyz_triplets(df.columns)
+    X = df[cols].to_numpy(dtype=np.float32)
+    n_points, T = len(cols)//3, X.shape[0]
+    coords = X.reshape(T, n_points, 3)
+
+    if ref_idx is not None:
+        coords -= coords[:, ref_idx:ref_idx+1, :]
+    else:
+        coords -= coords.mean(axis=1, keepdims=True)
+
+    if not use_procrustes:
+        return coords.reshape(T, n_points*3), (n_points, 3)
+
+    trial_mean = coords.mean(axis=0)
+    R, s, t = compute_procrustes_transform_3d(template, trial_mean,
+                                              allow_rotation, allow_scale)
+    aligned = (coords @ R) * s + t
+    return aligned.reshape(T, n_points*3), (n_points, 3)
+
+def canonicalise_mean_pose(pose_xyz):
+    P = pose_xyz.copy()
+    P -= P[0]  # pelvis center
+    x_body = P[11] - P[10]    # L→R shoulder vector
+    y_body = P[3] - P[0]      # pelvis to neck (up)
+    
+    # Make skeleton face forward (positive Y direction in plot coordinates)
+    # First establish right direction (X)
+    x = x_body / (np.linalg.norm(x_body)+1e-12)
+    
+    # Then up direction (Z), orthogonal to right
+    y = y_body - np.dot(x, y_body)*x
+    y = y / (np.linalg.norm(y)+1e-12)
+    
+    # Forward direction (Y) - cross product of right and up
+    z = np.cross(x, y)
+    
+    # Ensure we have a right-handed coordinate system
+    y = np.cross(z, x)
+    if np.dot(np.cross(x,y),z) < 0: 
+        z = -z
+    
+    # Make skeleton face towards positive Y (front of plot)
+    if z[1] < 0:  # if facing backwards
+        z = -z
+        y = np.cross(z, x)
+    
+    R = np.stack([x,y,z], axis=1)
+    return P @ R
+
+def build_template_with_canonicalisation(trials_flat, n_points):
+    means = []
+    for arr in trials_flat:
+        m = arr.reshape(-1, n_points, 3).mean(axis=0)
+        means.append(canonicalise_mean_pose(m))
+    template = np.mean(np.stack(means,0),0)
+    aligned = []
+    for m in means:
+        R,s,t = compute_procrustes_transform_3d(template, m)
+        aligned.append((m@R)*s + t)
+    return np.mean(np.stack(aligned,0),0)
+
+def canonicalise_trial(seq, global_template):
+    """
+    Canonicalise all frames in a trial to the global template orientation.
+    seq: (T, n_points, 3)
+    global_template: (n_points, 3) canonical reference skeleton
+    """
+    # Get mean pose of this trial
+    trial_mean = seq.mean(axis=0)
+
+    # Compute rigid transform aligning trial_mean to global template
+    R, _, t = compute_procrustes_transform_3d(global_template, trial_mean,
+                                              allow_rotation=True, allow_scale=False)
+
+    # Apply same transform to all frames in this trial
+    aligned = (seq @ R) + t
+    return aligned
+
+def align_yaw_only(X, template, ref_idx, neck_idx):
+    """
+    Align a 3D skeleton sequence X (n_points x 3) to template:
+    - translate pelvis (ref_idx) to origin
+    - constrain rotation to yaw (Y-axis) only
+    """
+    # --- centre pelvis ---
+    Xc = X - X[ref_idx]
+    Tc = template - template[ref_idx]
+
+    # --- forward direction (pelvis -> neck) projected to XZ plane ---
+    vX = (Xc[neck_idx] - Xc[ref_idx]) * np.array([1, 0, 1])
+    vT = (Tc[neck_idx] - Tc[ref_idx]) * np.array([1, 0, 1])
+
+    # normalise
+    vX /= np.linalg.norm(vX) + 1e-8
+    vT /= np.linalg.norm(vT) + 1e-8
+
+    # yaw angle between them
+    angle = np.arctan2(vT[0]*vX[2] - vT[2]*vX[0],
+                       vT[0]*vX[0] + vT[2]*vX[2])
+
+    R = np.array([[ np.cos(angle), 0, np.sin(angle)],
+                  [ 0,             1, 0],
+                  [-np.sin(angle), 0, np.cos(angle)]])
+
+    return (Xc @ R.T)

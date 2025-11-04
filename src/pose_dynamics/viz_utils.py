@@ -731,3 +731,350 @@ def create_2x2_figure(df, stats_results, plot_specs=None):
                "Head–Pupil CRQA (X-axis)", "% Recurrence")
     
     return fig
+
+
+
+
+import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
+import numpy as np
+
+# ===============================
+# --- Plot RQA Results ---
+# ===============================
+
+import matplotlib.gridspec as gs
+
+def plot_rqa_results(
+    dataX=None, dataY=None, td=None,
+    plot_mode='rp', point_size=4,
+    save_path=None):
+    """
+    Plot RQA or CRQA results with aligned RP and TS width.
+    """
+
+    ax_ts_x = None
+    ax_ts_y = None
+
+    N = len(dataX)
+    fig = plt.figure(figsize=(8, 9))  # Squarer figure to accommodate equal width
+    gs = gridspec.GridSpec(3, 2, width_ratios=[1, 12], height_ratios=[1, 12, 2], hspace=0.4, wspace=0.2)
+
+    # === Recurrence Plot ===
+    ax_rp = fig.add_subplot(gs[1, 1])
+    ax_rp.set_facecolor('#b0c4de')  # Light Steel Blue, a lighter navy shade
+
+    recur_y, recur_x = np.where(td == 1)
+    ax_rp.scatter(recur_x, recur_y, c='blue', s=point_size, edgecolors='none')
+    ax_rp.set_xlim([0, N])
+    ax_rp.set_ylim([0, N])
+    ax_rp.set_title("Cross-Recurrence Plot" if dataY is not None else "Recurrence Plot", pad=8)
+    ax_rp.set_xlabel("X(i)")
+    ax_rp.set_ylabel("Y(j)" if dataY is not None else "X(j)")
+
+    # === Time Series X ===
+    if 'timeseries' in plot_mode:
+        ax_ts_x = fig.add_subplot(gs[2, 1], sharex=ax_rp)
+        ax_ts_x.plot(np.arange(N), dataX[:N], color='tab:blue')
+        ax_ts_x.set_xlim([0, N])
+        ax_ts_x.set_title("Time Series X", fontsize=10)
+        ax_ts_x.set_xlabel("Time")
+        ax_ts_x.set_ylabel("X", rotation=0, labelpad=15)
+
+    # === Time Series Y ===
+    if dataY is not None and 'timeseries' in plot_mode:
+        ax_ts_y = fig.add_subplot(gs[1, 0], sharey=ax_rp)
+        ax_ts_y.plot(dataY[:N], np.arange(N), color='tab:blue')
+        ax_ts_y.invert_xaxis()
+        ax_ts_y.set_ylim([0, N])
+        ax_ts_y.set_title("Time Series Y", fontsize=10)
+        ax_ts_y.set_ylabel("Time")
+        ax_ts_y.set_xlabel("Y", rotation=0, labelpad=15)
+
+    if 'timeseries' in plot_mode:
+        if ax_ts_x is not None:
+            fig.align_xlabels([ax_rp, ax_ts_x])
+        if ax_ts_y is not None:
+            fig.align_ylabels([ax_rp, ax_ts_y])
+    else:
+        fig.align_xlabels([ax_rp])
+        fig.align_ylabels([ax_rp])
+    
+    if save_path:
+       import os
+       os.makedirs(os.path.dirname(save_path), exist_ok=True)
+       plt.savefig(save_path, dpi=300, bbox_inches='tight')
+       print(f"Plot saved to: {save_path}")
+
+    plt.show()
+
+# ===============================
+# --- Alignment plotting helpers ---
+# ===============================
+
+from mpl_toolkits.mplot3d.art3d import Line3DCollection
+from io import SKELETON_CONNECTIONS   
+
+def recenter(P, ref_index=0):
+    """Center skeleton on reference joint (default pelvis=0)."""
+    return P - P[ref_index]
+
+def remap_zed(P):
+    # ZED: (X=side, Y=up, Z=depth) → plot coords (X, -Z, Y) for upright skeleton
+    return np.stack([P[:,0], -P[:,2], P[:,1]], axis=1)
+
+def flip_180_vertical(P):
+    """Flip skeleton 180 degrees around vertical axis (spin around)."""
+    P_flipped = P.copy()
+    P_flipped[:, 0] = -P[:, 0]  # flip X
+    P_flipped[:, 1] = -P[:, 1]  # flip Y
+    # Z stays the same (vertical axis)
+    return P_flipped
+
+def adjust_floor_level(P):
+    """Adjust skeleton so feet are at floor level (z=0)."""
+    # Find the lowest Z coordinate (feet)
+    min_z = np.min(P[:, 2])
+    P_adjusted = P.copy()
+    P_adjusted[:, 2] = P[:, 2] - min_z  # Move so lowest point is at z=0
+    return P_adjusted
+
+def draw_skeleton(ax, points, color="k", lw=1.5, groups=("body","legs","face")):
+    for g in groups:
+        edges = SKELETON_CONNECTIONS[g]
+        segs = [(points[int(i)], points[int(j)]) for i,j in edges]
+        lc = Line3DCollection(segs, colors=color, linewidths=lw)
+        ax.add_collection3d(lc)
+
+def draw_floor(ax, w=2, l=3, z0=0.0):
+    """Draw floor rectangle centered at origin, like a mat the skeleton stands on."""
+    x = np.array([-w/2, w/2, w/2, -w/2, -w/2])
+    y = np.array([-l/2, -l/2, l/2, l/2, -l/2])
+    z = np.full_like(x, z0)
+    ax.plot(x, y, z, color="gray", alpha=0.3)
+
+def style(ax, w, l):
+    ax.set_xlim(-w/2, w/2)
+    ax.set_ylim(-l/2, l/2)
+    ax.set_zlim(0, 2.0)  # Reduced from 2.5 to 2.0 for closer view
+    ax.set_box_aspect([w, l, 2.0])  # Match the zlim
+    
+    # Set viewing angle to look more straight-on (less from above)
+    ax.view_init(elev=10, azim=-90)  # Lower elevation (10 degrees), front view
+    
+    ax.set_xticks([]); ax.set_yticks([]); ax.set_zticks([])
+    ax.grid(False)
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+    ax.set_facecolor("white")
+
+def orient_skeleton(P, nose_idx=9, neck_idx=3):
+    """
+    Orient skeleton so that the nose->neck vector always faces +Y.
+    Assumes P is already remapped into display coordinates.
+    """
+    P_oriented = P.copy()
+    
+    # Forward direction (nose - neck), projected to XY plane
+    forward = P_oriented[nose_idx] - P_oriented[neck_idx]
+    forward[2] = 0  # ignore vertical component
+    
+    # Canonical forward = +Y
+    if np.dot(forward, np.array([0,1,0])) < 0:
+        # Flip around vertical axis (Z)
+        P_oriented[:,0] = -P_oriented[:,0]  # flip X
+    return P_oriented
+
+def prep_for_display(P, nose_idx=9, neck_idx=3):
+    """
+    Apply all display transformations consistently:
+    - remap from ZED to plotting coords
+    - recenter on pelvis
+    - orient so facing direction is +Y
+    - adjust floor so feet touch z=0
+    """
+    P_disp = remap_zed(P)
+    P_disp = recenter(P_disp)
+    P_disp = orient_skeleton(P_disp, nose_idx, neck_idx)
+    P_disp = adjust_floor_level(P_disp)
+    return P_disp
+
+# ===============================
+# --- Diagnostic alignment plot ---
+# ===============================
+
+def diagnostic_plot_2panel(template_xyz, raw_means_xyz, aligned_means_xyz,
+                           save_path=None, max_samples=2,
+                           box_width=2, box_length=3,
+                           flip_template=False):
+    """
+    Two-panel diagnostic plot: raw vs aligned skeletons with a floor box.
+    Keeps everything centered and adds legend at bottom.
+    
+    Args:
+        template_xyz : (n_points, 3) array (global template).
+        raw_means_xyz : list of (n_points, 3) arrays (trial mean poses, raw).
+        aligned_means_xyz : list of (n_points, 3) arrays (trial mean poses, aligned).
+        save_path : str or None, file to save figure.
+        max_samples : int, number of trials to plot.
+        box_width, box_length : floor box dimensions.
+        flip_template : bool, if True flip template 180° around vertical axis.
+    """
+    # --- optional flip ---
+    if flip_template:
+        template_xyz = template_xyz.copy()
+        # rotate 180° around vertical axis (Z in display space)
+        template_xyz[:, [0,1]] *= -1   # flip X and Y together
+
+    fig = plt.figure(figsize=(16, 8))
+    grid = gs.GridSpec(1, 2, figure=fig, left=0.02, right=0.98,
+                       top=0.95, bottom=0.15, wspace=0.02)
+    ax0 = fig.add_subplot(grid[0, 0], projection="3d")
+    ax1 = fig.add_subplot(grid[0, 1], projection="3d")
+
+    colors = plt.cm.tab10.colors
+
+    # --- Before alignment ---
+    draw_skeleton(ax0, template_xyz, color="k", lw=1.8)
+    ax0.scatter(template_xyz[:,0], template_xyz[:,1], template_xyz[:,2],
+                color="k", s=15, label="Global Template")
+    
+    for i, P in enumerate(raw_means_xyz[:max_samples]):
+        draw_skeleton(ax0, P, color=colors[i % 10], lw=1.0)
+        ax0.scatter(P[:,0], P[:,1], P[:,2],
+                    color=colors[i % 10], s=8, label=f"Raw Data (P{i+1})")
+
+    style(ax0, box_width, box_length)
+    draw_floor(ax0, box_width, box_length, z0=0)
+    ax0.set_title("Before Alignment")
+
+    # --- After alignment ---
+    draw_skeleton(ax1, template_xyz, color="k", lw=1.8)
+    ax1.scatter(template_xyz[:,0], template_xyz[:,1], template_xyz[:,2],
+                color="k", s=15, label="Global Template")
+    
+    for i, P in enumerate(aligned_means_xyz[:max_samples]):
+        draw_skeleton(ax1, P, color=colors[i % 10], lw=1.0)
+        ax1.scatter(P[:,0], P[:,1], P[:,2],
+                    color=colors[i % 10], s=8, label=f"Aligned Data (P{i+1})")
+
+    style(ax1, box_width, box_length)
+    draw_floor(ax1, box_width, box_length, z0=0)
+    ax1.set_title("After Alignment")
+
+    # --- Legend ---
+    handles, labels = ax1.get_legend_handles_labels()
+    fig.legend(handles, labels, loc="lower center", ncol=3, frameon=False)
+
+    if save_path:
+        plt.savefig(save_path, dpi=200, bbox_inches="tight")
+    plt.show()
+
+# =====================
+# animation helper
+# =====================
+import os
+import matplotlib.animation as animation
+from mpl_toolkits.mplot3d.art3d import Line3DCollection
+
+def create_pm_animation_3dgrid(pca, X, mean_vector, edges, save_path,
+                               n_components=3, n_frames=200, scale=2.0, fps=40):
+    """
+    Create 3D animations of PCA movement components (grid of subplots).
+    Grey skeleton = mean pose, Black skeleton = animated PC.
+    PCA input is body-centred only. Display transforms applied here.
+    """
+
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    n_points = mean_vector.size // 3
+
+    # === Display-only prep ===
+    def prep_for_display(P):
+        return adjust_floor_level(
+            flip_180_vertical(
+                recenter(remap_zed(P))
+            )
+        )
+
+    # === Build PC reconstructions (in canonical space) ===
+    pc_scores = pca.transform(X)
+    t = np.linspace(0, 2*np.pi, n_frames)
+    all_positions = []
+    for i in range(n_components):
+        coeffs = np.sin(t) * scale * np.std(pc_scores[:, i])
+        reconstruction = np.outer(coeffs, pca.components_[i]) + mean_vector
+        positions = reconstruction.reshape(n_frames, n_points, 3)
+        all_positions.append(positions)
+    all_positions = np.array(all_positions)   # (n_components, n_frames, n_points, 3)
+
+    # === Mean pose (display transformed) ===
+    base_pose = prep_for_display(mean_vector.reshape(n_points, 3))
+
+    # === Global axis limits (shared across all PCs, in display space) ===
+    poses_disp = np.vstack([
+        prep_for_display(pose).reshape(1, n_points, 3)
+        for pose in all_positions.reshape(-1, n_points, 3)
+    ])
+    mins = np.min(poses_disp.reshape(-1, 3), axis=0)
+    maxs = np.max(poses_disp.reshape(-1, 3), axis=0)
+
+    pad = 0.05 * (maxs - mins)
+    mins -= pad
+    maxs += pad
+
+    # === Figure with subplots ===
+    ncols = min(3, n_components)
+    nrows = int(np.ceil(n_components / ncols))
+    fig = plt.figure(figsize=(5 * ncols, 5 * nrows))
+    axes, artists = [], []
+
+    for i in range(n_components):
+        ax = fig.add_subplot(nrows, ncols, i+1, projection="3d")
+        axes.append(ax)
+
+        # Apply shared global limits
+        ax.set_xlim(mins[0], maxs[0])
+        ax.set_ylim(mins[1], maxs[1])
+        ax.set_zlim(mins[2], maxs[2])
+        ax.view_init(elev=15, azim=-70)
+        ax.set_title(f"PC{i+1}: {pca.explained_variance_ratio_[i]*100:.1f}% var")
+        ax.axis("off")
+
+        # --- Grey mean skeleton ---
+        segs_mean = [(base_pose[int(a)], base_pose[int(b)]) for a,b in edges]
+        lc_mean = Line3DCollection(segs_mean, colors="gray", linewidths=1, alpha=0.6, zorder=1)
+        ax.add_collection3d(lc_mean)
+        dots_mean = ax.scatter(base_pose[:,0], base_pose[:,1], base_pose[:,2],
+                               c="gray", s=10, alpha=0.6, zorder=1)
+
+        # --- Black animated skeleton (init) ---
+        segs_init = [(base_pose[int(a)], base_pose[int(b)]) for a,b in edges]
+        lc_black = Line3DCollection(segs_init, colors="black", linewidths=1.5, zorder=10)
+        ax.add_collection3d(lc_black)
+        dots_black = ax.scatter([], [], [], c="black", s=10, zorder=11)
+
+        artists.append((lc_black, dots_black))
+
+    # === Update function ===
+    def update(frame):
+        updated = []
+        for i, ax in enumerate(axes):
+            pose = all_positions[i, frame]
+            pose_disp = prep_for_display(pose)
+
+            # update black skeleton lines
+            segs = [(pose_disp[int(a)], pose_disp[int(b)]) for a,b in edges]
+            artists[i][0].set_segments(segs)
+            updated.append(artists[i][0])
+
+            # update black dots
+            artists[i][1]._offsets3d = (pose_disp[:,0], pose_disp[:,1], pose_disp[:,2])
+            updated.append(artists[i][1])
+
+        return updated
+
+    ani = animation.FuncAnimation(fig, update, frames=n_frames,
+                                  interval=1000/fps, blit=False)
+    ani.save(save_path, writer="ffmpeg", fps=fps)
+    plt.close()
+    print(f"[DONE] 3D PCA grid animation saved to {save_path}")
