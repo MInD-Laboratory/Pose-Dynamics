@@ -52,3 +52,6 @@ def crossRQA(data1, data2, params):
     # Write stats
     if params['doStatsFile']:
         output_io_utils.write_rqa_stats("CrossRQA", params, rs, err_code)
+
+    # Return results
+    return td, rs, mats, err_code

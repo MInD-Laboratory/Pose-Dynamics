@@ -24,3 +24,27 @@ def write_rqa_stats(filename, params, rs, err_code):
             )
         else:
             f.write("0.0, 0.0, 0.0, 0.0, 0.0, 0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0\n")
+
+def write_drp_profile(filename, params, lags, drp):
+    """
+    Save full DRP profile (lags + %REC values) to CSV,
+    with metadata written into each row.
+    """
+    import os
+    stats_file = "DRP_Profile.csv"
+    file_exists = os.path.exists(stats_file)
+
+    if not file_exists:
+        with open(stats_file, "w") as f:
+            f.write("filename,eDim,tLag,rescale,radius,lag,perc_recur\n")
+
+    with open(stats_file, "a") as f:
+        for lag, val in zip(lags, drp):
+            f.write(
+                f"{filename}, {params['eDim']}, {params['tLag']}, "
+                f"{params['rescaleNorm']}, {params['radius'] * 100}, "
+                f"{lag}, {val:.6f}\n"
+            )
+
+    print(f"DRP profile written to {stats_file}")
+

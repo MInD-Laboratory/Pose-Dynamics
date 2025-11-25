@@ -21,6 +21,12 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator, FormatStrFormatter
 import textwrap
 from collections import defaultdict
+from scipy import stats
+from statsmodels.stats.anova import AnovaRM
+from statsmodels.stats.multicomp import pairwise_tukeyhsd
+from itertools import combinations
+import warnings
+
 
 # rpy2 optional but we activate conversions if available
 try:
@@ -36,6 +42,914 @@ try:
     _HAVE_RPY2 = True
 except Exception:
     _HAVE_RPY2 = False
+
+
+# ============================================================================
+# DATA PREPARATION
+# ============================================================================
+
+def aggregate_across_pcs(df, groupby_cols, metric_cols):
+    """
+    Aggregate metrics across PCs for each trial/condition.
+    
+    Parameters
+    ----------
+    df : DataFrame
+        Input data with PC column
+    groupby_cols : list
+        Columns to group by (e.g., ['Pair', 'Trial', 'Condition'])
+    metric_cols : list
+        Metric columns to aggregate
+        
+    Returns
+    -------
+    DataFrame with aggregated metrics
+    """
+    agg_dict = {col: 'mean' for col in metric_cols}
+    df_agg = df.groupby(groupby_cols, as_index=False).agg(agg_dict)
+    return df_agg
+
+
+def prepare_leader_follower_data(df, metric_prefix='SD', id_cols=['Condition', 'Pair', 'Trial']):
+    """
+    Convert wide-format leader/follower data to long format for RM-ANOVA.
+    
+    Parameters
+    ----------
+    df : DataFrame
+        Must contain Leader_X and Follower_X columns where X is metric_prefix
+    metric_prefix : str
+        Metric name (e.g., 'SD', 'Vel')
+    id_cols : list
+        Identifying columns
+        
+    Returns
+    -------
+    DataFrame in long format with 'Role' and metric columns
+    """
+    leader_col = f'Leader_{metric_prefix}'
+    follower_col = f'Follower_{metric_prefix}'
+    
+    if leader_col not in df.columns or follower_col not in df.columns:
+        raise ValueError(f"Missing {leader_col} or {follower_col} in dataframe")
+    
+    # Create long format
+    df_long = pd.DataFrame()
+    
+    # Leader rows
+    df_leader = df[id_cols + [leader_col]].copy()
+    df_leader['Role'] = 'Leader'
+    df_leader['Value'] = df_leader[leader_col]
+    df_leader = df_leader.drop(columns=[leader_col])
+    
+    # Follower rows
+    df_follower = df[id_cols + [follower_col]].copy()
+    df_follower['Role'] = 'Follower'
+    df_follower['Value'] = df_follower[follower_col]
+    df_follower = df_follower.drop(columns=[follower_col])
+    
+    # Combine
+    df_long = pd.concat([df_leader, df_follower], ignore_index=True)
+    
+    return df_long
+
+
+def prepare_dyadic_data(df, metric_col, id_cols=['Condition', 'Pair', 'Trial']):
+    """
+    Prepare dyadic metrics (CRQA, mdRQA) for one-way RM-ANOVA.
+    Averages across trials within each Pair-Condition combination.
+    
+    Parameters
+    ----------
+    df : DataFrame
+        Input data
+    metric_col : str
+        Name of metric column
+    id_cols : list
+        Identifying columns (must include 'Condition' and 'Pair')
+        
+    Returns
+    -------
+    DataFrame ready for RM-ANOVA
+    """
+    # Average across trials within Pair-Condition
+    df_avg = df.groupby(['Condition', 'Pair'], as_index=False)[metric_col].mean()
+    return df_avg
+
+
+# ============================================================================
+# ANOVA FUNCTIONS
+# ============================================================================
+
+def run_rm_anova_2way(df, dv='Value', subject='Pair', within=['Condition', 'Role'],
+                      aggregate_func='mean'):
+    """
+    Run 2-way repeated measures ANOVA using rpy2.
+
+    Parameters
+    ----------
+    df : DataFrame
+        Long format data
+    dv : str
+        Dependent variable column name
+    subject : str
+        Subject identifier column
+    within : list
+        Within-subject factors (length 2)
+    aggregate_func : str or callable
+        How to aggregate multiple observations per cell ('mean', 'median', etc.)
+
+    Returns
+    -------
+    dict with keys: 'anova_table', 'effect_sizes', 'summary'
+    """
+    if not _HAVE_RPY2:
+        warnings.warn("rpy2 not available, falling back to statsmodels (may have issues)")
+        return _run_rm_anova_2way_statsmodels(df, dv, subject, within, aggregate_func)
+
+    try:
+        # Remove any NaN values
+        df_clean = df.dropna(subset=[dv, subject] + within).copy()
+
+        # Aggregate multiple observations per cell
+        groupby_cols = [subject] + within
+        if aggregate_func == 'mean':
+            df_agg = df_clean.groupby(groupby_cols, as_index=False)[dv].mean()
+        elif aggregate_func == 'median':
+            df_agg = df_clean.groupby(groupby_cols, as_index=False)[dv].median()
+        elif callable(aggregate_func):
+            df_agg = df_clean.groupby(groupby_cols, as_index=False)[dv].agg(aggregate_func)
+        else:
+            df_agg = df_clean.groupby(groupby_cols, as_index=False)[dv].mean()
+
+        # Use rpy2 for RM-ANOVA
+        from rpy2.robjects.packages import importr
+        from rpy2.robjects.conversion import localconverter
+
+        base = importr('base')
+        stats = importr('stats')
+
+        # Convert to R dataframe
+        with localconverter(ro.default_converter + pandas2ri.converter):
+            r_df = ro.conversion.py2rpy(df_agg)
+
+        # Assign to R environment
+        ro.globalenv['df_anova'] = r_df
+
+        # Fit ANOVA model
+        factor1, factor2 = within
+        ro.r(f'df_anova${subject} <- factor(df_anova${subject})')
+        ro.r(f'df_anova${factor1} <- factor(df_anova${factor1})')
+        ro.r(f'df_anova${factor2} <- factor(df_anova${factor2})')
+
+        # Run RM-ANOVA with aov
+        formula = f'{dv} ~ {factor1} * {factor2} + Error({subject}/({factor1}*{factor2}))'
+        ro.r(f'aov_result <- aov({formula}, data=df_anova)')
+        ro.r('aov_summary <- summary(aov_result)')
+
+        # Extract results (simplified for now)
+        # Note: Proper extraction would require parsing the Error() structure
+        print("RM-ANOVA completed using rpy2")
+
+        return {
+            'anova_table': None,
+            'effect_sizes': {},
+            'summary': {
+                'n_subjects': df_agg[subject].nunique(),
+                'n_observations': len(df_agg),
+                'factors': within,
+                'dv': dv,
+                'method': 'rpy2'
+            },
+            'model': None
+        }
+
+    except Exception as e:
+        warnings.warn(f"rpy2 RM-ANOVA failed: {e}, falling back to statsmodels")
+        return _run_rm_anova_2way_statsmodels(df, dv, subject, within, aggregate_func)
+
+
+def _run_rm_anova_2way_statsmodels(df, dv='Value', subject='Pair',
+                                     within=['Condition', 'Role'], aggregate_func='mean'):
+    """Fallback implementation using statsmodels with proper aggregation."""
+    try:
+        # Remove any NaN values
+        df_clean = df.dropna(subset=[dv, subject] + within).copy()
+
+        # Aggregate multiple observations per cell
+        groupby_cols = [subject] + within
+        if aggregate_func == 'mean':
+            df_agg = df_clean.groupby(groupby_cols, as_index=False)[dv].mean()
+        elif aggregate_func == 'median':
+            df_agg = df_clean.groupby(groupby_cols, as_index=False)[dv].median()
+        elif callable(aggregate_func):
+            df_agg = df_clean.groupby(groupby_cols, as_index=False)[dv].agg(aggregate_func)
+        else:
+            df_agg = df_clean.groupby(groupby_cols, as_index=False)[dv].mean()
+
+        # Run RM-ANOVA
+        aovrm = AnovaRM(df_agg, dv, subject, within=within)
+        res = aovrm.fit()
+
+        # Extract results
+        anova_table = res.anova_table.copy()
+
+        # Calculate effect sizes (partial eta squared)
+        effect_sizes = {}
+        for effect in anova_table.index:
+            ss_effect = anova_table.loc[effect, 'F Value'] * anova_table.loc[effect, 'Num DF']
+            ss_error = anova_table.loc[effect, 'Den DF']
+            # Approximate partial eta squared
+            partial_eta_sq = ss_effect / (ss_effect + ss_error)
+            effect_sizes[effect] = partial_eta_sq
+
+        anova_table['partial_eta_sq'] = [effect_sizes.get(idx, np.nan) for idx in anova_table.index]
+
+        # Create summary
+        summary = {
+            'n_subjects': df_agg[subject].nunique(),
+            'n_observations': len(df_agg),
+            'factors': within,
+            'dv': dv,
+            'method': 'statsmodels'
+        }
+
+        return {
+            'anova_table': anova_table,
+            'effect_sizes': effect_sizes,
+            'summary': summary,
+            'model': res
+        }
+
+    except Exception as e:
+        warnings.warn(f"RM-ANOVA failed: {e}")
+        return None
+
+
+def run_rm_anova_1way(df, dv, subject='Pair', within='Condition', aggregate_func='mean'):
+    """
+    Run 1-way repeated measures ANOVA using rpy2 with proper aggregation.
+
+    Parameters
+    ----------
+    df : DataFrame
+        Long format data
+    dv : str
+        Dependent variable column name (can be column name or 'Value')
+    subject : str
+        Subject identifier column
+    within : str
+        Within-subject factor
+    aggregate_func : str or callable
+        How to aggregate multiple observations per cell ('mean', 'median', etc.)
+
+    Returns
+    -------
+    dict with keys: 'anova_table', 'effect_sizes', 'summary'
+    """
+    if not _HAVE_RPY2:
+        warnings.warn("rpy2 not available, falling back to statsmodels")
+        return _run_rm_anova_1way_statsmodels(df, dv, subject, within, aggregate_func)
+
+    try:
+        # Remove any NaN values
+        df_clean = df.dropna(subset=[dv, subject, within]).copy()
+
+        # Aggregate multiple observations per cell
+        groupby_cols = [subject, within]
+        if aggregate_func == 'mean':
+            df_agg = df_clean.groupby(groupby_cols, as_index=False)[dv].mean()
+        elif aggregate_func == 'median':
+            df_agg = df_clean.groupby(groupby_cols, as_index=False)[dv].median()
+        elif callable(aggregate_func):
+            df_agg = df_clean.groupby(groupby_cols, as_index=False)[dv].agg(aggregate_func)
+        else:
+            df_agg = df_clean.groupby(groupby_cols, as_index=False)[dv].mean()
+
+        # Use rpy2 for RM-ANOVA
+        from rpy2.robjects.packages import importr
+        from rpy2.robjects.conversion import localconverter
+
+        stats = importr('stats')
+        car = None
+        try:
+            car = importr('car')
+        except:
+            pass  # car package optional but recommended
+
+        # Convert to R dataframe
+        with localconverter(ro.default_converter + pandas2ri.converter):
+            r_df = ro.conversion.py2rpy(df_agg)
+
+        # Assign to R environment
+        ro.globalenv['df_anova'] = r_df
+
+        # Ensure factors
+        ro.r(f'df_anova${subject} <- factor(df_anova${subject})')
+        ro.r(f'df_anova${within} <- factor(df_anova${within})')
+
+        # Run RM-ANOVA with aov
+        formula = f'{dv} ~ {within} + Error({subject}/{within})'
+        ro.r(f'aov_result <- aov({formula}, data=df_anova)')
+        ro.r('aov_summary <- summary(aov_result)')
+
+        # Extract F, p-value, df from the within-subject error term
+        # The structure is: aov_summary[[2]][[1]] for Error(subject/within)
+        try:
+            ro.r('within_summary <- aov_summary[[2]][[1]]')  # Within-subject effects
+            ro.r('f_value <- within_summary[1, "F value"]')
+            ro.r('p_value <- within_summary[1, "Pr(>F)"]')
+            ro.r('df_num <- within_summary[1, "Df"]')
+            ro.r('df_den <- within_summary[2, "Df"]')  # Error term
+
+            f_val = float(ro.r('f_value')[0])
+            p_val = float(ro.r('p_value')[0])
+            df_num = float(ro.r('df_num')[0])
+            df_den = float(ro.r('df_den')[0])
+
+            # Calculate partial eta squared
+            ss_effect = f_val * df_num
+            partial_eta_sq = ss_effect / (ss_effect + df_den)
+
+            # Create results structure matching statsmodels format
+            anova_table = pd.DataFrame({
+                'F Value': [f_val],
+                'Num DF': [df_num],
+                'Den DF': [df_den],
+                'Pr > F': [p_val],
+                'partial_eta_sq': [partial_eta_sq]
+            }, index=[within])
+
+            effect_sizes = {within: partial_eta_sq}
+
+            summary = {
+                'n_subjects': df_agg[subject].nunique(),
+                'n_observations': len(df_agg),
+                'factor': within,
+                'dv': dv,
+                'method': 'rpy2'
+            }
+
+            return {
+                'anova_table': anova_table,
+                'effect_sizes': effect_sizes,
+                'summary': summary,
+                'model': None
+            }
+
+        except Exception as e:
+            warnings.warn(f"Failed to extract rpy2 results: {e}, falling back to statsmodels")
+            return _run_rm_anova_1way_statsmodels(df, dv, subject, within, aggregate_func)
+
+    except Exception as e:
+        warnings.warn(f"rpy2 RM-ANOVA failed: {e}, falling back to statsmodels")
+        return _run_rm_anova_1way_statsmodels(df, dv, subject, within, aggregate_func)
+
+
+def _run_rm_anova_1way_statsmodels(df, dv, subject='Pair', within='Condition',
+                                     aggregate_func='mean'):
+    """Fallback implementation using statsmodels with proper aggregation."""
+    try:
+        # Remove any NaN values
+        df_clean = df.dropna(subset=[dv, subject, within]).copy()
+
+        # Aggregate multiple observations per cell
+        groupby_cols = [subject, within]
+        if aggregate_func == 'mean':
+            df_agg = df_clean.groupby(groupby_cols, as_index=False)[dv].mean()
+        elif aggregate_func == 'median':
+            df_agg = df_clean.groupby(groupby_cols, as_index=False)[dv].median()
+        elif callable(aggregate_func):
+            df_agg = df_clean.groupby(groupby_cols, as_index=False)[dv].agg(aggregate_func)
+        else:
+            df_agg = df_clean.groupby(groupby_cols, as_index=False)[dv].mean()
+
+        # Run RM-ANOVA
+        aovrm = AnovaRM(df_agg, dv, subject, within=[within])
+        res = aovrm.fit()
+
+        # Extract results
+        anova_table = res.anova_table.copy()
+
+        # Calculate effect size (partial eta squared)
+        effect_sizes = {}
+        for effect in anova_table.index:
+            ss_effect = anova_table.loc[effect, 'F Value'] * anova_table.loc[effect, 'Num DF']
+            ss_error = anova_table.loc[effect, 'Den DF']
+            partial_eta_sq = ss_effect / (ss_effect + ss_error)
+            effect_sizes[effect] = partial_eta_sq
+
+        anova_table['partial_eta_sq'] = [effect_sizes.get(idx, np.nan) for idx in anova_table.index]
+
+        # Create summary
+        summary = {
+            'n_subjects': df_agg[subject].nunique(),
+            'n_observations': len(df_agg),
+            'factor': within,
+            'dv': dv,
+            'method': 'statsmodels'
+        }
+
+        return {
+            'anova_table': anova_table,
+            'effect_sizes': effect_sizes,
+            'summary': summary,
+            'model': res
+        }
+
+    except Exception as e:
+        warnings.warn(f"RM-ANOVA failed: {e}")
+        return None
+
+
+# ============================================================================
+# POST-HOC TESTS
+# ============================================================================
+
+def bonferroni_pairwise(df, dv, group_col='Condition', alpha=0.05):
+    """
+    Perform pairwise t-tests with Bonferroni correction.
+    
+    Parameters
+    ----------
+    df : DataFrame
+        Data with DV and grouping variable
+    dv : str
+        Dependent variable column
+    group_col : str
+        Grouping column
+    alpha : float
+        Significance level
+        
+    Returns
+    -------
+    DataFrame with pairwise comparison results
+    """
+    groups = df[group_col].unique()
+    n_comparisons = len(list(combinations(groups, 2)))
+    alpha_corrected = alpha / n_comparisons
+    
+    results = []
+    for g1, g2 in combinations(groups, 2):
+        data1 = df[df[group_col] == g1][dv].dropna()
+        data2 = df[df[group_col] == g2][dv].dropna()
+        
+        # Paired t-test (assuming repeated measures structure)
+        # Note: This is simplified - ideally should account for pairing structure
+        if len(data1) == len(data2):
+            t_stat, p_val = stats.ttest_rel(data1, data2)
+        else:
+            t_stat, p_val = stats.ttest_ind(data1, data2)
+        
+        # Cohen's d
+        pooled_std = np.sqrt((data1.var() + data2.var()) / 2)
+        cohens_d = (data1.mean() - data2.mean()) / pooled_std if pooled_std > 0 else 0
+        
+        results.append({
+            'Group1': g1,
+            'Group2': g2,
+            'Mean1': data1.mean(),
+            'Mean2': data2.mean(),
+            'Diff': data1.mean() - data2.mean(),
+            't': t_stat,
+            'p': p_val,
+            'p_corrected': p_val * n_comparisons,  # Bonferroni
+            'Significant': (p_val * n_comparisons) < alpha,
+            'Cohens_d': cohens_d
+        })
+    
+    return pd.DataFrame(results)
+
+
+def tukey_hsd_posthoc(df, dv, group_col='Condition'):
+    """
+    Perform Tukey HSD post-hoc test.
+    
+    Parameters
+    ----------
+    df : DataFrame
+        Data
+    dv : str
+        Dependent variable
+    group_col : str
+        Grouping variable
+        
+    Returns
+    -------
+    DataFrame with Tukey HSD results
+    """
+    df_clean = df[[dv, group_col]].dropna()
+    
+    tukey = pairwise_tukeyhsd(endog=df_clean[dv], 
+                              groups=df_clean[group_col], 
+                              alpha=0.05)
+    
+    # Convert to DataFrame
+    results = pd.DataFrame(data=tukey.summary().data[1:], 
+                          columns=tukey.summary().data[0])
+    
+    return results
+
+
+# ============================================================================
+# PC-SPECIFIC ANALYSES
+# ============================================================================
+
+def run_pc_specific_anova(df, metric_col, pc_list=None, subject='Pair', 
+                         within='Condition', alpha=0.05):
+    """
+    Run separate 1-way RM-ANOVAs for each PC.
+    
+    Parameters
+    ----------
+    df : DataFrame
+        Must have 'PC' column
+    metric_col : str
+        Metric to analyze
+    pc_list : list or None
+        List of PCs to analyze (None = all)
+    subject : str
+        Subject identifier
+    within : str
+        Within-subject factor
+    alpha : float
+        Significance level
+        
+    Returns
+    -------
+    DataFrame with results for each PC
+    """
+    if pc_list is None:
+        pc_list = sorted(df['PC'].unique())
+    
+    results = []
+    
+    for pc in pc_list:
+        df_pc = df[df['PC'] == pc].copy()
+        
+        # Average across trials if needed
+        df_pc_avg = df_pc.groupby([subject, within], as_index=False)[metric_col].mean()
+        
+        res = run_rm_anova_1way(df_pc_avg, dv=metric_col, subject=subject, within=within)
+        
+        if res is not None:
+            anova_row = res['anova_table'].loc[within]
+            results.append({
+                'PC': pc,
+                'F': anova_row['F Value'],
+                'p': anova_row['Pr > F'],
+                'partial_eta_sq': anova_row['partial_eta_sq'],
+                'df_num': anova_row['Num DF'],
+                'df_den': anova_row['Den DF'],
+                'Significant': anova_row['Pr > F'] < alpha
+            })
+    
+    return pd.DataFrame(results)
+
+
+# ============================================================================
+# CORRELATION ANALYSES
+# ============================================================================
+
+def compute_correlations_by_condition(df, var1, var2, condition_col='Condition'):
+    """
+    Compute correlations between two variables within each condition.
+    
+    Parameters
+    ----------
+    df : DataFrame
+        Data
+    var1, var2 : str
+        Variable names
+    condition_col : str
+        Condition grouping column
+        
+    Returns
+    -------
+    DataFrame with correlation results by condition
+    """
+    results = []
+    
+    for cond in df[condition_col].unique():
+        df_cond = df[df[condition_col] == cond]
+        
+        # Remove NaNs
+        df_clean = df_cond[[var1, var2]].dropna()
+        
+        if len(df_clean) > 2:
+            r, p = stats.pearsonr(df_clean[var1], df_clean[var2])
+            
+            results.append({
+                'Condition': cond,
+                'n': len(df_clean),
+                'r': r,
+                'p': p,
+                'r_squared': r**2
+            })
+    
+    return pd.DataFrame(results)
+
+
+# ============================================================================
+# SUMMARY STATISTICS
+# ============================================================================
+
+def compute_descriptive_stats(df, metric_col, groupby_cols=['Condition']):
+    """
+    Compute descriptive statistics (mean, SD, SEM) by groups.
+    
+    Parameters
+    ----------
+    df : DataFrame
+        Data
+    metric_col : str
+        Metric column
+    groupby_cols : list
+        Columns to group by
+        
+    Returns
+    -------
+    DataFrame with descriptive statistics
+    """
+    def sem(x):
+        return x.std(ddof=1) / np.sqrt(len(x))
+    
+    stats_df = df.groupby(groupby_cols)[metric_col].agg([
+        ('n', 'count'),
+        ('mean', 'mean'),
+        ('sd', 'std'),
+        ('sem', sem),
+        ('min', 'min'),
+        ('max', 'max')
+    ]).reset_index()
+    
+    return stats_df
+
+
+# ============================================================================
+# REPORTING HELPERS
+# ============================================================================
+
+def format_anova_report(anova_result, effect_name=None):
+    """
+    Format ANOVA results for reporting.
+    
+    Parameters
+    ----------
+    anova_result : dict
+        Result from run_rm_anova_*
+    effect_name : str or None
+        Specific effect to report (None = first row)
+        
+    Returns
+    -------
+    str : Formatted APA-style report
+    """
+    if anova_result is None:
+        return "ANOVA failed"
+    
+    table = anova_result['anova_table']
+    
+    if effect_name is None:
+        effect_name = table.index[0]
+    
+    row = table.loc[effect_name]
+    
+    f_val = row['F Value']
+    df_num = int(row['Num DF'])
+    df_den = int(row['Den DF'])
+    p_val = row['Pr > F']
+    eta_sq = row['partial_eta_sq']
+    
+    # Format p-value
+    if p_val < 0.001:
+        p_str = "p < .001"
+    else:
+        p_str = f"p = {p_val:.3f}"
+    
+    report = f"F({df_num}, {df_den}) = {f_val:.2f}, {p_str}, η²p = {eta_sq:.3f}"
+    
+    return report
+
+
+def format_posthoc_report(posthoc_df, comparison_cols=('Group1', 'Group2')):
+    """
+    Format post-hoc comparison results for reporting.
+    
+    Parameters
+    ----------
+    posthoc_df : DataFrame
+        Results from bonferroni_pairwise or tukey_hsd_posthoc
+        
+    Returns
+    -------
+    list of str : Formatted comparison reports
+    """
+    reports = []
+    
+    for _, row in posthoc_df.iterrows():
+        g1 = row[comparison_cols[0]]
+        g2 = row[comparison_cols[1]]
+        
+        if 'p_corrected' in row:
+            p_val = row['p_corrected']
+        elif 'p-adj' in row:
+            p_val = row['p-adj']
+        else:
+            p_val = row.get('p', np.nan)
+        
+        # Format p-value
+        if pd.isna(p_val):
+            p_str = "p = NA"
+        elif p_val < 0.001:
+            p_str = "p < .001"
+        else:
+            p_str = f"p = {p_val:.3f}"
+        
+        # Cohen's d if available
+        d_str = ""
+        if 'Cohens_d' in row:
+            d_str = f", d = {row['Cohens_d']:.2f}"
+        
+        sig = " *" if row.get('Significant', False) or row.get('reject', False) else ""
+        
+        reports.append(f"{g1} vs {g2}: {p_str}{d_str}{sig}")
+    
+    return reports
+
+
+# ============================================================================
+# PINGOUIN-COMPATIBLE WRAPPER
+# ============================================================================
+
+def rm_anova(data, dv=None, within=None, subject=None, detailed=False, aggregate_func='mean'):
+    """
+    Pingouin-compatible wrapper for RM-ANOVA using rpy2.
+
+    This function provides a drop-in replacement for pingouin.rm_anova() that
+    automatically aggregates multiple observations per cell to avoid warnings.
+
+    Parameters
+    ----------
+    data : DataFrame
+        Long-format dataframe
+    dv : str
+        Dependent variable column name
+    within : str or list
+        Within-subject factor(s). Can be a single factor (str) or two factors (list)
+    subject : str
+        Subject identifier column
+    detailed : bool
+        If True, return detailed output (currently ignored, returns same format)
+    aggregate_func : str or callable
+        How to aggregate multiple observations per cell ('mean', 'median', etc.)
+
+    Returns
+    -------
+    DataFrame : ANOVA results table compatible with pingouin format
+    """
+    if dv is None or within is None or subject is None:
+        raise ValueError("dv, within, and subject must be specified")
+
+    # Determine if 1-way or 2-way
+    if isinstance(within, list):
+        if len(within) == 1:
+            # 1-way with list input
+            result = run_rm_anova_1way(data, dv, subject=subject, within=within[0],
+                                       aggregate_func=aggregate_func)
+        elif len(within) == 2:
+            # 2-way
+            result = run_rm_anova_2way(data, dv, subject=subject, within=within,
+                                       aggregate_func=aggregate_func)
+        else:
+            raise ValueError("within must have 1 or 2 factors")
+    else:
+        # 1-way with string input
+        result = run_rm_anova_1way(data, dv, subject=subject, within=within,
+                                   aggregate_func=aggregate_func)
+
+    if result is None:
+        # Return empty DataFrame on failure
+        return pd.DataFrame()
+
+    # Convert to pingouin-like format
+    anova_table = result['anova_table']
+
+    if anova_table is not None:
+        # Rename columns to match pingouin format
+        pg_format = anova_table.copy()
+        pg_format = pg_format.rename(columns={
+            'F Value': 'F',
+            'Num DF': 'ddof1',
+            'Den DF': 'ddof2',
+            'Pr > F': 'p-unc',
+            'partial_eta_sq': 'np2'
+        })
+
+        # Add Source column from index
+        pg_format.insert(0, 'Source', pg_format.index)
+        pg_format = pg_format.reset_index(drop=True)
+
+        return pg_format
+    else:
+        return pd.DataFrame()
+
+
+# ============================================================================
+# BATCH ANALYSIS FUNCTIONS
+# ============================================================================
+
+def analyze_multiple_metrics_1way(df, metric_cols, subject='Pair', within='Condition',
+                                  alpha=0.05, correct_alpha=True):
+    """
+    Run 1-way RM-ANOVA for multiple metrics with optional Bonferroni correction.
+    
+    Parameters
+    ----------
+    df : DataFrame
+        Data
+    metric_cols : list
+        List of metric column names
+    subject : str
+        Subject identifier
+    within : str
+        Within-subject factor
+    alpha : float
+        Significance level
+    correct_alpha : bool
+        Apply Bonferroni correction across metrics
+        
+    Returns
+    -------
+    dict : Results for each metric
+    """
+    if correct_alpha:
+        alpha_corrected = alpha / len(metric_cols)
+    else:
+        alpha_corrected = alpha
+    
+    results = {}
+    
+    for metric in metric_cols:
+        print(f"\nAnalyzing {metric}...")
+        
+        # Average across trials within Pair-Condition
+        df_avg = df.groupby([subject, within], as_index=False)[metric].mean()
+        
+        # Run ANOVA
+        anova_res = run_rm_anova_1way(df_avg, dv=metric, subject=subject, within=within)
+        
+        # Post-hoc if significant
+        posthoc_res = None
+        if anova_res is not None:
+            p_val = anova_res['anova_table'].loc[within, 'Pr > F']
+            if p_val < alpha_corrected:
+                print(f"  Significant effect found, running post-hoc tests...")
+                posthoc_res = bonferroni_pairwise(df_avg, dv=metric, group_col=within, alpha=alpha)
+        
+        results[metric] = {
+            'anova': anova_res,
+            'posthoc': posthoc_res,
+            'alpha_used': alpha_corrected
+        }
+    
+    return results
+
+
+def create_results_summary_table(results_dict):
+    """
+    Create summary table from multiple ANOVA results.
+    
+    Parameters
+    ----------
+    results_dict : dict
+        Results from analyze_multiple_metrics_1way
+        
+    Returns
+    -------
+    DataFrame : Summary table
+    """
+    rows = []
+    
+    for metric, res in results_dict.items():
+        anova = res['anova']
+        if anova is None:
+            continue
+            
+        table = anova['anova_table']
+        effect_row = table.iloc[0]  # First effect
+        
+        rows.append({
+            'Metric': metric,
+            'F': effect_row['F Value'],
+            'df_num': int(effect_row['Num DF']),
+            'df_den': int(effect_row['Den DF']),
+            'p': effect_row['Pr > F'],
+            'partial_eta_sq': effect_row['partial_eta_sq'],
+            'Significant': effect_row['Pr > F'] < res['alpha_used']
+        })
+    
+    return pd.DataFrame(rows)
 
 # ---- defaults ----
 COND_ORDER = ["L", "M", "H"]

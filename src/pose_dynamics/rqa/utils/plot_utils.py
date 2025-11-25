@@ -64,3 +64,41 @@ def plot_rqa_results(
        print(f"Plot saved to: {save_path}")
 
     plt.show()
+
+def plot_drp_results(
+    lags,
+    drp,
+    point_size=4,
+    save_path=None
+):
+    """
+    Plot Diagonal Recurrence Profile (DRP).
+
+    Parameters
+    ----------
+    lags : np.ndarray
+        Array of lag values corresponding to the DRP.
+    drp : np.ndarray
+        Recurrence rate values for each lag.
+    point_size : int, optional
+        Marker size for the plot (default=4).
+    save_path : str or None, optional
+        If provided, the plot will be saved to this path.
+    """
+    fig, ax = plt.subplots(figsize=(8, 4))
+
+    ax.plot(lags, drp, marker='o', ms=point_size, color='tab:blue', label="DRP")
+    ax.axvline(0, color='k', linestyle='--', alpha=0.6, label="Lag=0")
+    ax.set_title("Diagonal Recurrence Profile (DRP)")
+    ax.set_xlabel("Lag")
+    ax.set_ylabel("% Recurrence")
+    ax.grid(True, linestyle="--", alpha=0.5)
+    ax.legend(loc="best")
+
+    if save_path:
+        import os
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        print(f"Plot saved to: {save_path}")
+
+    plt.show()

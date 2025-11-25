@@ -23,3 +23,13 @@ utils/__pycache__
 build
 .venv
 rqa_utils_cpp.cp311-win_amd64.pyd
+__pycache__/autoRQA.cpython-312.pyc
+__pycache__/crossRQA.cpython-312.pyc
+__pycache__/multivariateRQA.cpython-312.pyc
+.gitignore
+utils/rqa_utils_cpp.cpython-312-darwin.so
+__pycache__/multivariateRQA.cpython-311.pyc
+.vscode/settings.json
+rqa_analysis.egg*
+test_R.ipynb
+__pycache__
