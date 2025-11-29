@@ -3,6 +3,7 @@ data/
 figs/
 extra1/
 projects/mirror_game/data/
+projects/mirror_game/results/
 
 # OS/editor cruft
 .DS_Store
