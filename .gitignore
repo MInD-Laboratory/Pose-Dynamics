@@ -1,11 +1,21 @@
+# Data / results
 data/
 figs/
 extra1/
+projects/mirror_game/data/
+
+# OS/editor cruft
 .DS_Store
-__pycache__/
-.ipynb_checkpoints/
 .vscode/
-*.pyc
-.DS_Store
-src/pose_dynamics/__pycache__/
-projects/mirror_game/data
+
+# Python junk
+__pycache__/
+**/__pycache__/
+*.py[cod]
+
+# Jupyter junk
+.ipynb_checkpoints/
+**/.ipynb_checkpoints/
+
+# Build / packaging
+*.egg-info
