@@ -1,9 +1,11 @@
 data/
 figs/
-extra/
+extra1/
 .DS_Store
 __pycache__/
 .ipynb_checkpoints/
 .vscode/
 *.pyc
 .DS_Store
+src/pose_dynamics/__pycache__/
+projects/mirror_game/data
