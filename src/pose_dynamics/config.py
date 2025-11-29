@@ -1,32 +1,52 @@
-# src/pose_dynamics/config.py
+# config.py
 from __future__ import annotations
-from dataclasses import dataclass
-import os
-
-# ---------------------------------------------------------------------
-# Global state for active configuration
-_CFG = None
-
-def set_cfg(cfg):
-    """Set the active configuration globally."""
-    global _CFG
-    _CFG = cfg
-
-def get_cfg():
-    """Get the current active configuration."""
-    if _CFG is None:
-        raise RuntimeError("Configuration has not been set. Call set_cfg() first.")
-    return _CFG
-# ---------------------------------------------------------------------
+from dataclasses import dataclass, field
 
 @dataclass
-class Config:
-    RAW_DIR: str = os.getenv("POSE_RAW_DIR", "data/raw")
-    OUT_BASE: str = os.getenv("POSE_OUT_BASE", "data/processed")
-    PARTICIPANT_INFO_FILE: str = "participant_info.csv"
-    CONF_THRESH: float = 0.30
-    MAX_INTERP_RUN: int = 60
-    FILTER_ORDER: int = 4
-    CUTOFF_HZ: float = 10.0
-    WINDOW_SECONDS: int = 60
-    WINDOW_OVERLAP: float = 0.5
+class RQAParams:
+    eDim: int = 4
+    tLag: int = 15
+    radius: float = 0.15
+    tw: int = 1
+    minl: int = 2
+    norm: str = "zscore"
+    rescaleNorm: bool = True
+
+    ami_min_lag: int = 1
+    ami_max_lag: int = 140
+    fnn_min_dim: int = 1
+    fnn_max_dim: int = 10
+
+
+@dataclass
+class WindowingDefaults:
+    window_size_sec: float = 60.0
+    step_size_sec: float = 30.0
+    min_coverage: float = 0.6
+
+
+@dataclass
+class SamplingRates:
+    pose_fps: float = 30.0
+    face_fps: float = 30.0
+    eyelink_raw_hz: float = 1000.0
+    eyelink_downsampled_hz: float = 60.0
+
+
+@dataclass
+class InterpolationConfig:
+    max_gap_frames_default: int = 60
+
+
+@dataclass
+class GlobalConfig:
+    RQA: RQAParams = field(default_factory=RQAParams)
+    WINDOWING: WindowingDefaults = field(default_factory=WindowingDefaults)
+    SAMPLING: SamplingRates = field(default_factory=SamplingRates)
+    INTERP: InterpolationConfig = field(default_factory=InterpolationConfig)
+
+
+_CFG = GlobalConfig()
+
+def get_cfg() -> GlobalConfig:
+    return _CFG

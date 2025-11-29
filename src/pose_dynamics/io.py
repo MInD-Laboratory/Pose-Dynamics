@@ -1,182 +1,110 @@
-"""I/O utilities for reading and writing pose analysis data.
-
-This module handles file operations including reading CSVs, writing results,
-and managing directory structures. Data processing logic has been moved to
-preprocessing_utils.py for better separation of concerns.
-"""
+# io_utils.py
 from __future__ import annotations
-from pathlib import Path
-from typing import Dict, List
-import sys
 import json
+import os
+from pathlib import Path
+from typing import Any, Dict, Optional
+
 import numpy as np
 import pandas as pd
-import os
-
-from pose_dynamics.config import get_cfg
-
-# ---------- Directory and file management ------------------------------------
-def ensure_dirs() -> None:
-    """Create all necessary output directories if they don't exist."""
-    CFG = get_cfg()
-    base = Path(CFG.OUT_BASE)
-    for d in ["reduced", "masked", "interp_filtered", "norm_screen", "templates", "features", "linear_metrics"]:
-        (base / d).mkdir(parents=True, exist_ok=True)
+from datetime import datetime
 
 
-def list_csvs(dir_path: str) -> List[Path]:
-    """List all CSV files in a directory.
+# -------------------------------------------------------------
+# Directory helpers
+# -------------------------------------------------------------
 
-    Args:
-        dir_path: Directory path to search
+def ensure_dir(path: str | Path) -> Path:
+    """Ensure directory exists and return it."""
+    p = Path(path)
+    p.mkdir(parents=True, exist_ok=True)
+    return p
 
-    Returns:
-        Sorted list of CSV file paths, empty list if directory doesn't exist
+
+def timestamp() -> str:
+    """Return ISO-like timestamp without special characters."""
+    return datetime.now().strftime("%Y%m%d_%H%M%S")
+
+
+# -------------------------------------------------------------
+# DataFrame and array saving
+# -------------------------------------------------------------
+
+def save_df(df: pd.DataFrame, path: str | Path):
+    """Save DataFrame to CSV (UTF-8, no index)."""
+    path = Path(path)
+    ensure_dir(path.parent)
+    df.to_csv(path, index=False)
+    return str(path)
+
+
+def save_parquet(df: pd.DataFrame, path: str | Path):
+    path = Path(path)
+    ensure_dir(path.parent)
+    df.to_parquet(path, index=False)
+    return str(path)
+
+
+def save_array(arr: np.ndarray, path: str | Path):
+    """Save numpy array to NPZ."""
+    path = Path(path)
+    ensure_dir(path.parent)
+    np.save(path, arr)
+    return str(path)
+
+
+# -------------------------------------------------------------
+# JSON I/O
+# -------------------------------------------------------------
+
+def save_json(data: Dict[str, Any], path: str | Path):
+    path = Path(path)
+    ensure_dir(path.parent)
+    with open(path, "w") as f:
+        json.dump(data, f, indent=2)
+    return str(path)
+
+
+def load_json(path: str | Path) -> Dict[str, Any]:
+    with open(path, "r") as f:
+        return json.load(f)
+
+
+# -------------------------------------------------------------
+# RQA Stats Writer
+# -------------------------------------------------------------
+
+def write_rqa_stats(
+    analysis_name: str,
+    params: Dict[str, Any],
+    stats: Dict[str, Any],
+    err_code: int = 0,
+    out_dir: str | Path = "results/rqa",
+):
     """
-    p = Path(dir_path)
-    return sorted([f for f in p.glob("*.csv")]) if p.exists() else []
+    Save RQA stats for a single analysis run.
 
-
-def load_raw_files() -> List[Path]:
-    """Load list of raw pose CSV files from configured directory.
-
-    Filters out participant info file and returns only pose data files.
-
-    Returns:
-        List of pose CSV file paths
-
-    Raises:
-        SystemExit: If no pose CSV files found in RAW_DIR
+    Saves a JSON file containing:
+        {
+          "analysis": "...",
+          "err_code": 0 or nonzero,
+          "params": {...},
+          "metrics": {...}
+        }
     """
-    CFG = get_cfg()
-    p = Path(CFG.RAW_DIR)
-    # Get all CSV files except the participant info file
-    files = sorted([f for f in p.glob("*.csv")
-                   if f.exists() and f.name != CFG.PARTICIPANT_INFO_FILE])
+    out_dir = ensure_dir(out_dir)
 
-    if not files:
-        print(f"No pose CSV files found in RAW_DIR: {CFG.RAW_DIR}")
-        sys.exit(1)
-    return files
+    fname = f"{analysis_name}_{timestamp()}.json"
+    path = out_dir / fname
 
+    payload = {
+        "analysis": analysis_name,
+        "err_code": err_code,
+        "params": params,
+        "metrics": stats,
+    }
 
-# ---------- Filename transformation utilities --------------------------------
-def get_output_filename(input_filename: str, participant: str, condition: str, suffix: str = "") -> str:
-    """Generate output filename with condition instead of trial number.
-
-    Transforms filenames from '3101_02_pose.csv' format to '3101_M_pose.csv' format.
-
-    Args:
-        input_filename: Original input filename
-        participant: Participant ID
-        condition: Condition letter (L, M, or H)
-        suffix: Optional suffix to add before .csv (e.g., '_reduced')
-
-    Returns:
-        Output filename with condition replacing trial number
-
-    Examples:
-        >>> get_output_filename('3101_02_pose.csv', '3101', 'M', '_reduced')
-        '3101_M_reduced.csv'
-    """
-    # Use participant and condition to build new filename
-    return f"{participant}_{condition}{suffix}.csv"
-
-
-def load_participant_info_file() -> Path:
-    """Locate the participant info file.
-
-    Uses the filename from CFG.PARTICIPANT_INFO_FILE configuration.
-
-    Returns:
-        Path to participant info file
-
-    Raises:
-        FileNotFoundError: If participant info file not found
-    """
-    CFG = get_cfg()
-    # Try in RAW_DIR first
-    raw_dir_path = Path(CFG.RAW_DIR) / CFG.PARTICIPANT_INFO_FILE
-    if raw_dir_path.exists():
-        return raw_dir_path
-
-    # Try parent directory
-    parent_path = Path(CFG.RAW_DIR).parent / CFG.PARTICIPANT_INFO_FILE
-    if parent_path.exists():
-        return parent_path
-
-    raise FileNotFoundError(
-        f"{CFG.PARTICIPANT_INFO_FILE} not found in {CFG.RAW_DIR} or parent directory"
-    )
-
-
-# ---------- File writing operations -------------------------------------------
-def write_per_frame_metrics(out_root: Path, source: str, participant: str, condition: str,
-                            perframe: Dict[str, np.ndarray], interocular: np.ndarray, n_frames: int) -> None:
-    """Write per-frame metrics for a single trial.
-    
-    Writes individual trial CSV: <out_root>/per_frame/<source>/<participant>_<condition>_perframe.csv
-    
-    Args:
-        out_root: Root output directory
-        source: Source identifier (e.g., 'procrustes_global')
-        participant: Participant ID
-        condition: Experimental condition
-        perframe: Dictionary of metric_name -> array of per-frame values
-        interocular: Array of inter-ocular distances
-        n_frames: Number of frames
-    """
-    out_dir = out_root / "per_frame" / source
-    out_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Build per-trial DataFrame
-    df_pf = pd.DataFrame({
-        "participant": participant,
-        "condition": condition,
-        "frame": np.arange(n_frames, dtype=int),
-        "interocular": interocular
-    })
-    
-    for k, arr in perframe.items():
-        df_pf[k] = arr
-    
-    # Write individual trial CSV
-    out_path = out_dir / f"{participant}_{condition}_perframe.csv"
-    df_pf.to_csv(out_path, index=False)
-    
-
-def save_json_summary(path: Path, payload: dict) -> None:
-    """Save a dictionary as formatted JSON file.
-
-    Args:
-        path: Output file path
-        payload: Dictionary to save as JSON
-    """
-    path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w") as f:
         json.dump(payload, f, indent=2)
 
-
-def write_rqa_stats(filename, params, rs, err_code):
-    stats_file = "RQA_Stats.csv"
-
-    # Write header only if the file doesn't exist
-    if not os.path.exists(stats_file):
-        with open(stats_file, "w") as f:
-            f.write("filename,eDim,tLag,rescale,radius,perc_recur,perc_determ,maxl_found,"
-                    "mean_line,std_line,count_line,entropy,laminarity,trapping_time,"
-                    "vmax,divergence,trend_lower_diag,trend_upper_diag\n")
-
-    # Append results
-    with open(stats_file, "a") as f:
-        f.write(f"{filename}, {params['eDim']}, {params['tLag']}, {params['rescaleNorm']}, {params['radius'] * 100}, ")
-        if err_code == 0:
-            f.write(
-                f"{rs['perc_recur']:.3f}, {rs['perc_determ']:.3f}, {rs['maxl_found']:.2f}, "
-                f"{rs['mean_line_length']:.2f}, {rs['std_line_length']:.2f}, {rs['count_line']:.0f}, "
-                f"{rs['entropy']:.3f}, {rs['laminarity']:.3f}, {rs['trapping_time']:.3f}, "
-                f"{rs['vmax']:.2f}, {rs['divergence']:.3f}, "
-                f"{rs['trend_lower_diag']:.3f}, {rs['trend_upper_diag']:.3f}\n"
-            )
-        else:
-            f.write("0.0, 0.0, 0.0, 0.0, 0.0, 0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0\n")
+    return str(path)
