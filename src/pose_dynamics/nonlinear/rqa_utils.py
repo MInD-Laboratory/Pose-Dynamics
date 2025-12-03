@@ -4,8 +4,8 @@ from typing import Dict, Literal, Tuple, Sequence
 
 import numpy as np
 
-from pose_dynamics.nonlinear import norm_utils
-from pose_dynamics.rqa import rqa_utils_cpp  # <- rqa submodule backend
+from pose_dynamics.rqa.utils import norm_utils
+from pose_dynamics.rqa.utils import rqa_utils_cpp  # <- rqa submodule backend
 
 RqaMode = Literal["auto", "cross"]
 
@@ -43,43 +43,23 @@ def _radius_for_target_recurrence(
     rescale_norm: bool = False,
     theiler: int = 0,
 ) -> float:
-    """
-    Compute radius such that the recurrence rate (excluding theiler window)
-    is approximately target_rec.
-
-    Parameters
-    ----------
-    D : np.ndarray
-        Distance matrix (N x N).
-    target_rec : float
-        Target recurrence rate. If >1, treated as percentage (e.g. 5 -> 0.05).
-    rescale_norm : bool
-        If True, match rqa_stats behavior by rescaling by max(D) before
-        computing the radius.
-    theiler : int
-        Theiler window (number of diagonals to exclude around main diagonal).
-
-    Returns
-    -------
-    radius : float
-        Radius to pass into rqa_stats.
-    """
     D = np.asarray(D, dtype=float)
+
+    if D.ndim != 2 or D.shape[0] != D.shape[1]:
+        raise ValueError(
+            f"D must be a square distance matrix, got type={type(D)}, shape={getattr(D, 'shape', None)}"
+        )
+
     if target_rec > 1.0:  # allow 5 = 5%
         target_rec = target_rec / 100.0
 
     if target_rec <= 0.0 or target_rec >= 1.0:
         raise ValueError("target_rec must be in (0,1) or (0,100).")
 
-    if D.ndim != 2 or D.shape[0] != D.shape[1]:
-        raise ValueError("D must be a square distance matrix.")
-
     n = D.shape[0]
 
-    # build mask for off-diagonal elements outside Theiler window
     i, j = np.indices((n, n))
     mask = np.ones((n, n), dtype=bool)
-    # exclude main diagonal and theiler band
     if theiler >= 0:
         mask &= np.abs(i - j) > theiler
     else:
@@ -95,11 +75,8 @@ def _radius_for_target_recurrence(
         if maxv > 0:
             vals = vals / maxv
         else:
-            # all zeros => any small positive radius yields 100% recurrence;
-            # just return 0.
             return 0.0
 
-    # quantile corresponding to target_rec
     q = np.quantile(vals, target_rec)
     return float(q)
 
@@ -122,24 +99,35 @@ def run_rqa(
       - use params['radius'] (fixed radius), or
       - use target_rec (fixed recurrence rate) to choose radius, but not both.
     """
-    x = np.asarray(x, dtype=float)
+    # 0) Normalize inputs as float32 column vectors
+    x = np.asarray(x, dtype=np.float32)
     x = norm_utils.normalize_data(x, params["norm"])
 
     if mode == "cross":
         if y is None:
             raise ValueError("y must be provided for cross-RQA")
-        y = np.asarray(y, dtype=float)
+        y = np.asarray(y, dtype=np.float32)
         y = norm_utils.normalize_data(y, params["norm"])
     else:
         y = x
 
-    # 1) distance / embedding
+    # 1) distance / embedding — we *know* this returns a dict in your backend
     ds = rqa_utils_cpp.rqa_dist(
-        x, y,
+        x,
+        y,
         dim=params["eDim"],
         lag=params["tLag"],
     )
-    D = ds["d"]
+
+    if not isinstance(ds, dict):
+        raise TypeError(f"rqa_dist returned {type(ds)}, expected dict with key 'd'")
+
+    D = np.asarray(ds["d"], dtype=np.float32)
+
+    if D.ndim != 2 or D.shape[0] != D.shape[1]:
+        raise ValueError(
+            f"Distance matrix must be square, got shape={D.shape}"
+        )
 
     # 2) choose radius
     radius_param = params.get("radius", None)
@@ -154,27 +142,28 @@ def run_rqa(
             theiler=params.get("tw", 1),
         )
     elif radius_param is not None:
-        rad = radius_param
+        rad = float(radius_param)
     else:
         raise ValueError("Must provide either params['radius'] or target_rec.")
 
     # 3) stats
     td, rs, mats, err_code = rqa_utils_cpp.rqa_stats(
         D,
-        rescale=params["rescaleNorm"],
-        rad=rad,
-        diag_ignore=params["tw"],
-        minl=params["minl"],
-        rqa_mode=mode,
+        int(params["rescaleNorm"]),
+        float(rad),
+        int(params["tw"]),
+        int(params["minl"]),
+        mode,
     )
 
-    # you may want to expose the chosen radius to the caller:
-    td["radius_used"] = rad
+    # expose radius used
+    rs["radius_used"] = rad
 
     if not return_mats:
         mats = None
 
     return td, rs, mats, err_code
+
 
 def auto_rqa(x, params, return_mats=True, target_rec=None):
     return run_rqa(x, params, y=None, mode="auto",
@@ -185,10 +174,10 @@ def cross_rqa(x, y, params, return_mats=True, target_rec=None):
                    return_mats=return_mats, target_rec=target_rec)
 
 
+
 # ---------------------------------------------------------------------
 # Multivariate RQA 
 # ---------------------------------------------------------------------
-
 def _to_mv_array(data: np.ndarray | Sequence[np.ndarray]) -> np.ndarray:
     """
     Convert:
@@ -204,7 +193,7 @@ def _to_mv_array(data: np.ndarray | Sequence[np.ndarray]) -> np.ndarray:
             raise ValueError("Multivariate RQA requires at least 2 dimensions.")
         return arr
 
-    # assume list/sequence of 1D arrays
+    # sequence of 1D arrays
     series = [np.asarray(d, dtype=float).flatten() for d in data]
     if len(series) < 2:
         raise ValueError("Multivariate RQA requires at least 2 dimensions.")
@@ -224,6 +213,7 @@ def run_mv_rqa(
     return_mats: bool = True,
     target_rec: float | None = None,
 ) -> Tuple[Dict, Dict, Dict | None, int]:
+    # 0) normalize
     X1 = _to_mv_array(data)
     X1 = norm_utils.normalize_data(X1, params["norm"])
 
@@ -235,18 +225,26 @@ def run_mv_rqa(
     else:
         X2 = X1
 
+    # 1) multivariate distance
     ds = rqa_utils_cpp.rqa_dist_multivariate(
         X1.astype(np.float32),
         X2.astype(np.float32),
     )
-    D = ds["d"]
 
+    if not isinstance(ds, dict) or "d" not in ds:
+        raise TypeError(f"rqa_dist_multivariate returned unexpected type: {type(ds)}")
+
+    D = np.asarray(ds["d"], dtype=np.float32)
+
+    if D.ndim != 2 or D.shape[0] != D.shape[1]:
+        raise ValueError(f"Distance matrix must be square, got shape={D.shape}")
+
+    # 2) radius
     radius_param = params.get("radius", None)
     if target_rec is not None and radius_param is not None:
         raise ValueError("Provide either 'radius' or 'target_rec', not both.")
 
     if target_rec is not None:
-        # For MV cross, Theiler window across series = 0 (as in your original code)
         theiler = 0 if mode == "cross" else params.get("tw", 1)
         rad = _radius_for_target_recurrence(
             D,
@@ -255,22 +253,25 @@ def run_mv_rqa(
             theiler=theiler,
         )
     elif radius_param is not None:
-        rad = radius_param
+        rad = float(radius_param)
     else:
         raise ValueError("Must provide either params['radius'] or target_rec.")
 
-    diag_ignore = 0 if mode == "cross" else params.get("tw", 1)
 
+    diag_ignore = 0 if mode == "cross" else int(params.get("tw", 1))
+
+    # 3) stats
     td, rs, mats, err_code = rqa_utils_cpp.rqa_stats(
         D,
-        rescale=params["rescaleNorm"],
-        rad=rad,
-        diag_ignore=diag_ignore,
-        minl=params["minl"],
-        rqa_mode=mode,
+        int(params.get("rescaleNorm", 0)),
+        float(rad),
+        diag_ignore,
+        int(params.get("minl", 2)),
+        mode,
     )
 
-    td["radius_used"] = rad
+    rs["radius_used"] = rad
+    rs["mv_dim"] = ds.get("dim", X1.shape[1])
 
     if not return_mats:
         mats = None
@@ -282,9 +283,16 @@ def mv_auto_rqa(
     data: np.ndarray | Sequence[np.ndarray],
     params: Dict,
     return_mats: bool = True,
+    target_rec: float | None = None,
 ):
-    """Convenience alias: multivariate auto-RQA."""
-    return run_mv_rqa(data, params, data2=None, mode="auto", return_mats=return_mats)
+    return run_mv_rqa(
+        data,
+        params,
+        data2=None,
+        mode="auto",
+        return_mats=return_mats,
+        target_rec=target_rec,
+    )
 
 
 def mv_cross_rqa(
@@ -292,6 +300,13 @@ def mv_cross_rqa(
     data2: np.ndarray | Sequence[np.ndarray],
     params: Dict,
     return_mats: bool = True,
+    target_rec: float | None = None,
 ):
-    """Convenience alias: multivariate cross-RQA."""
-    return run_mv_rqa(data1, params, data2=data2, mode="cross", return_mats=return_mats)
+    return run_mv_rqa(
+        data1,
+        params,
+        data2=data2,
+        mode="cross",
+        return_mats=return_mats,
+        target_rec=target_rec,
+    )
