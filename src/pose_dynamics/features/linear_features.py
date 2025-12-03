@@ -103,7 +103,7 @@ def summarise_scalar_timeseries(
     x: np.ndarray,
     axes: Tuple[int, ...] = (0, 1),
     prefix: str = "",
-    stats: Iterable[str] = ("mean", "std", "min", "max"),
+    stats: Iterable[str] = ("mean", "std", "min", "max", "rms"),
 ) -> Dict[str, float]:
     """
     Compute simple summary statistics over a scalar-valued time series.
@@ -141,6 +141,9 @@ def summarise_scalar_timeseries(
     if "max" in stats:
         val = np.nanmax(x, axis=axes)
         features[f"{prefix}_max"] = float(val)
+    if "rms" in stats:
+        val = np.sqrt(np.nanmean(np.square(x), axis=axes))
+        features[f"{prefix}_rms"] = float(val)
 
     return features
 
