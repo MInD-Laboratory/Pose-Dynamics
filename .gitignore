@@ -20,3 +20,9 @@ __pycache__/
 
 # Build / packaging
 *.egg-info
+
+# Mosaic Results
+projects/Mosaic/animations
+projects/Mosaic/crqa_results
+projects/Mosaic/rqa_results
+projects/Mosaic/linear_results

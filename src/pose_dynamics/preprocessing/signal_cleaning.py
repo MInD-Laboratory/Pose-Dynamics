@@ -160,6 +160,179 @@ def align_pair(
 
 
 # ---------------------------------------------------------------------
+# Pose-specific preprocessing utilities
+# ---------------------------------------------------------------------
+
+def normalize_by_resolution(
+    df: pd.DataFrame,
+    width: int = 720,
+    height: int = 720,
+) -> pd.DataFrame:
+    """
+    Normalize pose coordinates by video resolution.
+    
+    Divides x coordinates by width and y coordinates by height to get
+    coordinates in [0, 1] range.
+    
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame with x/y coordinate columns (e.g., 'Nose_x_offset', 'Nose_y_offset')
+    width : int
+        Video width in pixels
+    height : int
+        Video height in pixels
+        
+    Returns
+    -------
+    pd.DataFrame
+        Normalized DataFrame
+    """
+    normalized = df.copy()
+    
+    for col in df.columns:
+        if col.endswith('_x_offset') or col.endswith('_x'):
+            normalized[col] = df[col] / width
+        elif col.endswith('_y_offset') or col.endswith('_y'):
+            normalized[col] = df[col] / height
+    
+    return normalized
+
+
+def mask_low_confidence(
+    df: pd.DataFrame,
+    threshold: float = 0.4,
+) -> pd.DataFrame:
+    """
+    Mask keypoints with confidence below threshold by setting to NaN.
+    
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame with coordinate and confidence columns
+    threshold : float
+        Minimum confidence value (0-1)
+        
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with low-confidence coordinates set to NaN
+    """
+    masked = df.copy()
+    
+    # Find all confidence columns
+    conf_cols = [col for col in df.columns if col.endswith('_conf') or col.endswith('_confidence')]
+    
+    for conf_col in conf_cols:
+        # Extract keypoint name
+        if conf_col.endswith('_conf'):
+            base = conf_col[:-5]  # Remove '_conf'
+        else:
+            base = conf_col[:-11]  # Remove '_confidence'
+        
+        # Find corresponding x/y columns
+        x_col = f"{base}_x_offset" if f"{base}_x_offset" in df.columns else f"{base}_x"
+        y_col = f"{base}_y_offset" if f"{base}_y_offset" in df.columns else f"{base}_y"
+        
+        # Mask low confidence points
+        low_conf_mask = df[conf_col] < threshold
+        if x_col in masked.columns:
+            masked.loc[low_conf_mask, x_col] = np.nan
+        if y_col in masked.columns:
+            masked.loc[low_conf_mask, y_col] = np.nan
+    
+    return masked
+
+
+def interpolate_nans(
+    df: pd.DataFrame,
+    max_gap: int = 60,
+) -> pd.DataFrame:
+    """
+    Interpolate NaN values in DataFrame columns.
+    
+    Wrapper around interpolate_dataframe_nan_runs for clearer naming.
+    
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input DataFrame
+    max_gap : int
+        Maximum consecutive NaNs to interpolate
+        
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with interpolated values
+    """
+    return interpolate_dataframe_nan_runs(df, max_run=max_gap)
+
+
+def filter_data_safe_preserve_nans(
+    df: pd.DataFrame,
+    fps: float,
+    cutoff_hz: float,
+    order: int = 4,
+) -> pd.DataFrame:
+    """
+    Apply Butterworth filter while preserving NaN locations.
+    
+    NaN values are preserved in their original positions after filtering.
+    
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input DataFrame
+    fps : float
+        Sampling rate in Hz
+    cutoff_hz : float
+        Cutoff frequency for low-pass filter
+    order : int
+        Filter order
+        
+    Returns
+    -------
+    pd.DataFrame
+        Filtered DataFrame with NaNs preserved
+    """
+    filtered = df.copy()
+    
+    for col in df.columns:
+        # Skip non-numeric columns
+        if not np.issubdtype(df[col].dtype, np.number):
+            continue
+            
+        # Store NaN mask
+        nan_mask = df[col].isna()
+        
+        # Skip if all NaN
+        if nan_mask.all():
+            continue
+        
+        # Skip if all valid (no filtering needed for NaN preservation)
+        if not nan_mask.any():
+            filtered[col] = butterworth_filter_dataframe(
+                df[[col]], fs=fps, cutoff_hz=cutoff_hz, order=order
+            )[col]
+            continue
+        
+        # For columns with some NaNs: forward/back fill temporarily for filtering
+        temp = df[col].ffill().bfill()
+        
+        # Filter the filled data
+        temp_df = pd.DataFrame({col: temp})
+        filtered_temp = butterworth_filter_dataframe(
+            temp_df, fs=fps, cutoff_hz=cutoff_hz, order=order
+        )[col]
+        
+        # Restore NaNs to original positions
+        filtered.loc[nan_mask, col] = np.nan
+        filtered.loc[~nan_mask, col] = filtered_temp[~nan_mask]
+    
+    return filtered
+
+
+# ---------------------------------------------------------------------
 # Interpolation (NaN gap filling)
 # ---------------------------------------------------------------------
 
@@ -170,7 +343,8 @@ def interpolate_run_limited(
     """
     Linearly interpolate NaN runs up to max_run samples long.
 
-    Longer gaps are left as NaN.
+    Uses pandas' built-in interpolate with limit to safely handle edges
+    without manual slicing.
 
     Parameters
     ----------
@@ -185,26 +359,9 @@ def interpolate_run_limited(
         Interpolated series.
     """
     s = x.copy()
-    isnan = s.isna().to_numpy()
-
-    if not isnan.any():
+    if max_run is None or max_run <= 0:
         return s
-
-    # find NaN runs
-    idx = np.arange(len(s))
-    # start of a NaN run = NaN & (prev is not NaN)
-    starts = idx[(isnan) & np.concatenate(([False], ~isnan[:-1]))]
-    # end of a NaN run = NaN & (next is not NaN)
-    ends = idx[(isnan) & np.concatenate((~isnan[1:], [False]))]
-
-    for start, end in zip(starts, ends):
-        run_len = end - start + 1
-        if run_len <= max_run:
-            s.iloc[start:end+1] = s.iloc[start-1:end+2].interpolate(
-                method="linear", limit_direction="both"
-            ).iloc[1:-1]
-
-    return s
+    return s.interpolate(method="linear", limit=max_run, limit_direction="both")
 
 
 def interpolate_dataframe_nan_runs(
