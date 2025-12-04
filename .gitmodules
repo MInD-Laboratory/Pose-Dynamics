@@ -4,3 +4,6 @@
 [submodule "src/pose_dynamics/rqa"]
 	path = src/pose_dynamics/rqa
 	url = https://github.com/xkiwilabs/Recurrence-Quantification-Analysis.git
+[submodule "src/pose_dynamics/rqa_submodule"]
+	path = src/pose_dynamics/rqa_submodule
+	url = https://github.com/xkiwilabs/Recurrence-Quantification-Analysis
