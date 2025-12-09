@@ -329,13 +329,13 @@ def create_pc_animation(
         ax.set_title(f'PC {i+1}')
         ax.axis('off')
 
-        # Plot skeleton
+        # Plot skeleton (lines first, then points on top)
         lines = []
         for i1, i2 in skeleton_pairs:
-            line, = ax.plot([], [], 'b-', linewidth=2)
+            line, = ax.plot([], [], 'k-', linewidth=2)  # Black lines
             lines.append(line)
         
-        scatter = ax.scatter([], [], c='red', s=20)
+        scatter = ax.scatter([], [], c='red', s=20, zorder=10)  # Points on top
         animated_artists.append((lines, scatter, i))
 
     for ax in axes[n_components:]:

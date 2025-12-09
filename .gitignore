@@ -26,3 +26,12 @@ projects/Mosaic/animations
 projects/Mosaic/crqa_results
 projects/Mosaic/rqa_results
 projects/Mosaic/linear_results
+
+# Virtual environments
+venv/
+.env/
+env/
+.venv/
+
+# C++ compiled files
+*.pyd

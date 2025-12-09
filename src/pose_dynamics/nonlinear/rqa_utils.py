@@ -4,8 +4,8 @@ from typing import Dict, Literal, Tuple, Sequence
 
 import numpy as np
 
-from pose_dynamics.rqa.utils import norm_utils
-from pose_dynamics.rqa.utils import rqa_utils_cpp  # <- rqa submodule backend
+from pose_dynamics.rqa_submodule.utils import norm_utils
+from pose_dynamics.rqa_submodule.utils import rqa_utils_cpp # C++ backend
 
 RqaMode = Literal["auto", "cross"]
 
@@ -17,7 +17,7 @@ def make_rqa_params(
     eDim: int = 3,
     tLag: int = 10,
     radius: float = 0.1,
-    norm: str = "euclidean",
+    norm: str = "zscore",
     rescaleNorm: bool = False,
     tw: int = 1,
     minl: int = 2,
