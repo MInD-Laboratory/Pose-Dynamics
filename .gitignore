@@ -27,6 +27,9 @@ projects/Mosaic/crqa_results
 projects/Mosaic/rqa_results
 projects/Mosaic/linear_results
 
+# Mirror Game Results
+projects/mirror_game/notebooks/mirror_game_preprocessed*
+
 # Virtual environments
 venv/
 .env/
