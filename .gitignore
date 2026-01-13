@@ -38,3 +38,6 @@ env/
 
 # C++ compiled files
 *.pyd
+
+# Plots
+projects/Mosaic/plots/
