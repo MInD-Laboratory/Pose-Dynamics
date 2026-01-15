@@ -36,3 +36,9 @@ select = [
 ignore = [
   "E501", 
 ]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8",
+  "ruff>=0.9",
+]
