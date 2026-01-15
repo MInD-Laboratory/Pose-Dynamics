@@ -1,0 +1,8 @@
+README.md
+pyproject.toml
+src/pose_dynamics/__init__.py
+src/pose_dynamics.egg-info/PKG-INFO
+src/pose_dynamics.egg-info/SOURCES.txt
+src/pose_dynamics.egg-info/dependency_links.txt
+src/pose_dynamics.egg-info/top_level.txt
+tests/test_imports.py
