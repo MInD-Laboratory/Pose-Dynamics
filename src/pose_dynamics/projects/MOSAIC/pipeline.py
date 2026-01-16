@@ -101,7 +101,7 @@ def extract_keypoints(file_path_or_data, sets=["hand", "face", "body"]):
 def preprocess_mosaic_trial(
     df: pd.DataFrame,
     expected_cols: List[str],
-    conf_threshold: float = 0.4,
+    conf_threshold: float = 0.3,
     max_interp_gap: int = 60,
     filter_cutoff: float = 10.0,
     filter_order: int = 4,
@@ -111,8 +111,29 @@ def preprocess_mosaic_trial(
     video_height: int = 720
 ) -> pd.DataFrame:
     """
-    Same pipeline as before, with optional downsampling to target_fps.
-    Note: expected_cols are XY only in your working pipeline.
+    Preprocess MOSAIC pose data for a single trial.
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Raw pose data DataFrame
+    expected_cols : list of str
+        List of expected columns in the final output
+    conf_threshold : float
+        Confidence threshold for masking low-confidence keypoints
+    max_interp_gap : int
+        Maximum gap (in frames) for interpolation
+    filter_cutoff : float
+        Cutoff frequency (Hz) for low-pass filtering
+    filter_order : int
+        Order of the Butterworth filter
+    fps : float
+        Original frames per second of the data
+    target_fps : float or None
+        Desired frames per second after downsampling (None to keep original)
+    video_width : int
+        Width of the video frame (for normalization)
+    video_height : int
+        Height of the video frame (for normalization)
     """
 
     if target_fps is not None and target_fps > fps:
