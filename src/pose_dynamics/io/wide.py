@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from .canonical import validate_pose_df
+from .validation import validate_pose_df
 
 _XYPROB_RE = re.compile(r"^(x|y|prob)(\d+)$")
 _XYZ_RE = re.compile(r"^(x|y|z)(\d+)$")
