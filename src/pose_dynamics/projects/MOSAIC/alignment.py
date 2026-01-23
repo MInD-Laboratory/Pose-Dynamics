@@ -380,8 +380,8 @@ def align_keypoints(
     ValueError
         If data contains NaN/inf values or if template is required but missing
     """
-    n_points = len(keypoint_names) // 2
-    coords_all = df.values.reshape(len(df), n_points, 2)
+    n_points = len(keypoint_names) // 2s
+    coords_all = df.values.copy().reshape(len(df), n_points, 2)
 
     if np.isnan(coords_all).any() or np.isinf(coords_all).any():
         raise ValueError("Input contains NaN or inf values")

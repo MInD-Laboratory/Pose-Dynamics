@@ -221,6 +221,135 @@ def plot_alignment_diagnostics(
 
     plt.show()
 
+# ============================================================================
+# PROCRUSTES VISUALIZATION
+# ============================================================================
+
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.linalg import orthogonal_procrustes
+
+def plot_procrustes_4panel(
+    global_template: np.ndarray,
+    raw_windows: list,
+    expected_cols: list,
+    n_samples: int = 2,
+    allow_rotation: bool = True,
+):
+    """
+    4-panel Procrustes visualization:
+    Raw -> After translation -> After rotation -> After scale
+
+    Notes
+    -----
+    - Scale is ALWAYS enabled in this visualization.
+    - No fixed-limb rescaling step is shown.
+    """
+    n_points = len(expected_cols) // 2
+
+    # pick samples
+    valid_windows = [w for w in raw_windows if w[0] is not None]
+    if not valid_windows:
+        raise ValueError("No valid windows to plot.")
+    sample_indices = np.linspace(
+        0, len(valid_windows) - 1, min(n_samples, len(valid_windows))
+    ).astype(int)
+
+    skeleton_pairs = get_skeleton_pairs(expected_cols, sets=("body", "arm", "face"))
+    colors = plt.cm.tab10.colors
+
+    titles = ["Raw", "After translation", "After rotation", "After scale"]
+    fig, axes = plt.subplots(1, 4, figsize=(22, 6), constrained_layout=True)
+
+    for ax, title in zip(axes, titles):
+        ax.set_title(title)
+        ax.set_aspect("equal")
+        ax.axis("off")
+
+    def _draw_pose(ax, pose_xy, color, alpha_pts=0.6, alpha_lines=0.4, lw=1):
+        ax.scatter(pose_xy[:, 0], pose_xy[:, 1], s=10, alpha=alpha_pts, color=color)
+        for i1, i2 in skeleton_pairs:
+            ax.plot(
+                [pose_xy[i1, 0], pose_xy[i2, 0]],
+                [pose_xy[i1, 1], pose_xy[i2, 1]],
+                alpha=alpha_lines,
+                color=color,
+                linewidth=lw,
+            )
+
+    # draw template on all panels
+    for ax in axes:
+        for i1, i2 in skeleton_pairs:
+            ax.plot(
+                [global_template[i1, 0], global_template[i2, 0]],
+                [global_template[i1, 1], global_template[i2, 1]],
+                color="black",
+                linewidth=2,
+                alpha=0.85,
+                zorder=10,
+            )
+        ax.scatter(
+            global_template[:, 0],
+            global_template[:, 1],
+            color="black",
+            s=12,
+            zorder=11,
+        )
+
+    # template centroid + centered template (for Procrustes estimation)
+    tmpl_centroid = global_template.mean(axis=0)
+    tmpl_c = global_template - tmpl_centroid
+    tmpl_norm = np.linalg.norm(tmpl_c) + 1e-12
+    tmpl_unit = tmpl_c / tmpl_norm  # scale-normalized template for rotation estimation
+
+    # plot each sample window
+    for si, idx in enumerate(sample_indices):
+        window_df, _meta = valid_windows[idx]
+        c = colors[si % len(colors)]
+
+        coords = window_df.values.reshape(len(window_df), n_points, 2)
+        raw_mean = coords.mean(axis=0)
+
+        # Panel 1: raw
+        _draw_pose(axes[0], raw_mean, c)
+        axes[0].scatter([], [], color=c, label=f"Participant {si+1}")  # legend handle
+
+        # Panel 2: translation (center mean pose by its centroid)
+        raw_centroid = raw_mean.mean(axis=0)
+        trans_mean = raw_mean - raw_centroid
+        _draw_pose(axes[1], trans_mean, c)
+
+        # Panel 3: rotation (estimate on scale-normalized shapes)
+        X = trans_mean
+        X_norm = np.linalg.norm(X) + 1e-12
+        X_unit = X / X_norm
+
+        if allow_rotation:
+            R, _ = orthogonal_procrustes(X_unit, tmpl_unit)  # X_unit @ R ≈ tmpl_unit
+        else:
+            R = np.eye(2)
+
+        rot_mean = X @ R
+        _draw_pose(axes[2], rot_mean, c)
+
+        # Panel 4: scale (match overall size to the template; then re-center to template centroid)
+        s = (tmpl_norm / (np.linalg.norm(rot_mean) + 1e-12))
+        scale_mean = (s * rot_mean) + tmpl_centroid
+        _draw_pose(axes[3], scale_mean, c)
+
+    # legend
+    template_handle = plt.Line2D([], [], marker="o", linestyle="", color="black", label="Global template")
+    handles, labels = axes[0].get_legend_handles_labels()
+    fig.legend(
+        [template_handle] + handles,
+        ["Global template"] + labels,
+        loc="lower center",
+        bbox_to_anchor=(0.5, -0.03),
+        ncol=1 + len(labels),
+        frameon=False,
+    )
+
+    plt.show()
 
 # ============================================================================
 # PCA ANIMATIONS
