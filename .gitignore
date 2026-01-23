@@ -41,3 +41,7 @@ env/
 
 # Plots
 projects/Mosaic/plots/
+
+# Large cache outputs
+projects/Mosaic/notebooks/cache_roi_windows/
+*.parquet
