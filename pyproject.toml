@@ -13,6 +13,9 @@ license = { text = "MIT" }
 dependencies = [
   "numpy>=1.26",
   "pandas>=2.2",
+  "pyyaml>=6.0",
+  "scipy>=1.11",
+  "matplotlib>=3.8",
 ]
 
 
@@ -42,3 +45,6 @@ dev = [
   "pytest>=8",
   "ruff>=0.9",
 ]
+
+[project.scripts]
+pose-dynamics = "pose_dynamics.cli.main:main"

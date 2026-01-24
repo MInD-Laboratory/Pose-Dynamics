@@ -3,3 +3,10 @@ __pycache__/
 *.pyc
 .ruff_cache/
 .pytest_cache/
+**/.DS_Store
+*.egg-info/
+examples/case_study_1_matb/data/
+examples/case_study_2_mosaic/data/
+examples/case_study_3_mirror/data/
+examples/case_study_4_synthetic/data/
+artifacts/
