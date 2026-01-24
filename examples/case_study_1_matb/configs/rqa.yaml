@@ -1,0 +1,16 @@
+rqa:
+  keypoints: all
+  signal: coords
+  m: 4
+  tau: 10
+  l_min: 2
+  v_min: 2
+
+  epsilon:
+    mode: percentile   # absolute | percentile | rr_target
+    value: 10.0
+
+  analysis: rqa        # rqa | crqa
+  plots:
+    enabled: true
+    max_plots: 3

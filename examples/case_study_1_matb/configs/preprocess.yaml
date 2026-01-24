@@ -1,0 +1,256 @@
+preprocess:
+
+  # -------------------------------------------------------------------
+  # SIGNAL SELECTION (what data is "in scope" for this pipeline)
+  # -------------------------------------------------------------------
+  # This happens early so that:
+  #   - window QC/drop is computed on the signals you care about
+  #   - Procrustes alignment can use only stable keypoints
+  #   - preprocessing doesn't waste time on unused keypoints/dims
+  selection:
+    # Keypoints to include in the analysis.
+    # Use 'all' to keep everything from ingest.
+    keypoints: all                # all | [nose, left_eye, right_eye, ...]
+
+    # Optional explicit exclusions (applied after keypoints include list).
+    exclude_keypoints: []         # e.g. [left_wrist, right_wrist]
+
+    # Dimensions to keep.
+    # If xyz is requested but z doesn't exist, behavior depends on require_xyz.
+    dims: xy                      # xy | xyz
+
+    # If true and dims=xyz but z is missing -> error.
+    # If false, silently fall back to xy and log a warning in provenance/QC.
+    require_xyz: false
+
+    # Whether to keep columns for unselected keypoints in outputs.
+    # Default false: output contains only selected signals (clean + unambiguous).
+    keep_unselected: false
+
+
+  # -------------------------------------------------------------------
+  # TIMEBASE
+  # -------------------------------------------------------------------
+  # Ensures that all trials have a usable time axis in seconds.
+  # If a trial already has a `time` column, it is used directly.
+  # If a trial only has `frame`, time is computed using fps from ingest metadata.
+  timebase:
+    enforce_time: true
+
+    # Optional resampling to a uniform sampling rate.
+    # This is OFF by default because resampling changes the signal.
+    # Enable only if:
+    #   - timestamps are irregular AND
+    #   - you plan to filter or use methods that assume constant dt.
+    resample:
+      enabled: false
+
+      # Target sampling rate (Hz) if resampling is enabled.
+      target_hz: 30
+
+      # Method used to fill values onto the resampling grid.
+      # This is NOT the same as gap interpolation; it only applies during resampling.
+      method: linear
+
+      # Relative tolerance for dt jitter used for QC/warnings.
+      # Example: 0.05 = 5% deviation from median dt.
+      jitter_tol: 0.05
+
+  # -------------------------------------------------------------------
+  # CONFIDENCE MASKING
+  # -------------------------------------------------------------------
+  # Converts low-confidence pose detections into missing data (NaNs).
+  # This step happens BEFORE missing-data interpolation.
+  confidence:
+    enabled: false
+
+    # Minimum confidence value required to keep a sample.
+    # If enabled=true and conf < conf_min, x/y/(z) are set to NaN.
+    conf_min: 0.5
+
+  # -------------------------------------------------------------------
+  # MISSING DATA HANDLING
+  # -------------------------------------------------------------------
+  # Controls how short gaps in the data are interpolated.
+  # Long gaps are NEVER interpolated.
+  missing:
+    interpolation:
+      enabled: true
+
+      # Interpolation method for short gaps.
+      # Linear is the safest default for dynamical analyses.
+      method: linear
+
+      # Defines what counts as a "short gap".
+      # Exactly ONE of the limit modes is active, selected by `type`.
+      limit:
+
+        # Gap limit mode:
+        #   seconds   -> use max_gap_s
+        #   frames    -> use max_gap_frames
+        #   embedding -> derive limit from embedding parameters
+        type: seconds
+
+        # Maximum gap duration (in seconds) that will be interpolated.
+        # Gaps longer than this remain NaN.
+        max_gap_s: 0.25
+
+        # Maximum gap length in frames (used only if type=frames).
+        max_gap_frames: 15
+
+        # Embedding-based limit (used only if type=embedding).
+        # Typical logic: max_gap ≈ (m - 1) * tau
+        embedding:
+          m: 4
+          tau: 15
+          units: frames   # frames | seconds
+
+  # -------------------------------------------------------------------
+  # WINDOWING + WINDOW-LEVEL DROPPING
+  # -------------------------------------------------------------------
+  # Defines how continuous trials are split into analysis windows.
+  # Windowing happens AFTER masking + interpolation.
+  windowing:
+    enabled: true
+
+    # Units used to define windows.
+    # seconds is preferred and recommended.
+    units: seconds          # seconds | frames
+
+    # Window length and step size.
+    # For seconds-based windows:
+    length_s: 60.0          # window duration in seconds
+    step_s: 30.0            # step size (50% overlap by default)
+
+    # For frame-based windows (used only if units=frames):
+    length_frames: 1800
+    step_frames: 900
+
+    # Whether to include partial windows at the beginning/end of a trial.
+    # Default false = only full windows are kept.
+    include_partial: false
+
+    # Optional trimming before windowing.
+    # Useful to discard unstable initial/final segments of trials.
+    trim_edges_s:
+      start: 0.0
+      end: 0.0
+
+    # Which keypoints are used to compute window-level QC statistics.
+    # This does NOT affect the signals themselves, only drop logic.
+    qc_keypoints: all       # all | [nose, left_eye, ...]
+
+    # Which dimensions are considered when assessing missingness.
+    qc_dims: xy             # xy | xyz
+
+    # ---------------------------------------------------------------
+    # WINDOW DROP POLICY
+    # ---------------------------------------------------------------
+    drop:
+      enabled: true
+
+      # How missingness is defined at the sample level:
+      #   any_dim_nan  -> sample is missing if ANY dim (x,y,z) is NaN
+      #   all_dims_nan -> sample is missing only if ALL dims are NaN
+      missing_rule: any_dim_nan
+
+      # Drop thresholds.
+      # A window is dropped if EITHER threshold is exceeded.
+      max_missing_frac: 0.4   # fraction of missing samples allowed
+      max_nans: null          # absolute NaN count cap (optional)
+
+      # How missingness is aggregated across keypoints.
+      # aggregate      -> compute over all keypoints jointly
+      # per_keypoint   -> evaluate per keypoint first
+      scope: aggregate
+
+      # Only used if scope=per_keypoint:
+      #   any -> drop if ANY keypoint violates thresholds
+      #   all -> drop only if ALL keypoints violate thresholds
+      per_keypoint_policy: any
+
+  # -------------------------------------------------------------------
+  # SPATIAL ALIGNMENT (PROCRUSTES)
+  # -------------------------------------------------------------------
+  # Removes nuisance variance from camera placement / coordinate frames.
+  # Applied as ONE transform per trial.
+  alignment:
+    enabled: true
+    method: procrustes
+
+    # Template definition:
+    #   trial  -> each trial aligned to its own mean pose
+    #   global -> trials aligned to a shared template (equal weight per trial)
+    template_scope: global
+
+    # Type of transform:
+    #   rigid      -> translation + rotation
+    #   similarity -> translation + rotation + scale
+    transform: similarity
+
+    # Toggle components explicitly (overrides transform defaults if set).
+    rotation: true
+    scaling: true
+    translation: true
+
+    # Keypoints used to estimate the transform.
+    keypoints: all
+
+    # Whether reflections (left/right flips) are allowed.
+    reflection: false
+
+    # How templates are aggregated.
+    template_agg: mean
+
+    # Safeguards against fitting Procrustes on garbage.
+    min_valid_frac_per_kp: 0.6
+    min_kps_for_fit: 1
+
+  # -------------------------------------------------------------------
+  # NORMALIZATION
+  # -------------------------------------------------------------------
+  # Controls amplitude scaling of signals.
+  normalization:
+    enabled: false
+
+    # Scaling method:
+    #   none   -> no normalization
+    #   zscore -> mean/std
+    #   minmax -> [0,1] scaling
+    method: none
+
+    # Scope of normalization:
+    #   global_trial -> parameters computed over entire trial
+    #   windowed     -> parameters computed per window (advanced use)
+    scope: global_trial
+
+  # -------------------------------------------------------------------
+  # DETRENDING / FILTERING
+  # -------------------------------------------------------------------
+  # Optional signal conditioning.
+  # Use only if you understand how it affects dynamics.
+  detrend_filter:
+
+    # Trend removal:
+    #   none | linear | highpass
+    detrend: none
+
+    # Low-pass filtering.
+    lowpass:
+      enabled: false
+
+      # Cutoff frequency in Hz.
+      cutoff_hz: 6
+
+      # Filter order (Butterworth).
+      order: 4
+
+  # -------------------------------------------------------------------
+  # SPATIAL CENTERING / SCALING
+  # -------------------------------------------------------------------
+  spatial:
+    centering:
+      method: none         # none | mean_keypoints | anchor_keypoint
+      anchor_keypoint: null
+    scale:
+      method: none         # none | unit_range

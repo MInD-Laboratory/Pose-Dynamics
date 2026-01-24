@@ -1,0 +1,20 @@
+rqa_params:
+  keypoints: all
+  n_keypoints: 2
+  n_windows: 4
+  signal: magnitude
+
+  ami:
+    max_lag: 50
+    bins: 32
+
+  fnn:
+    max_dim: 8
+    tau: 10
+    rtol: 10.0
+    atol: 2.0
+
+  epsilon:
+    m: 4
+    tau: 10
+    percentiles: [1, 2, 5, 10, 15, 20]

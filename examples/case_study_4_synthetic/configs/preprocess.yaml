@@ -1,0 +1,86 @@
+preprocess:
+  selection:
+    keypoints: all
+    exclude_keypoints: []
+    dims: xy
+    require_xyz: false
+    keep_unselected: false
+
+  timebase:
+    enforce_time: true
+    resample:
+      enabled: false
+      target_hz: 30
+      method: linear
+      jitter_tol: 0.05
+
+  confidence:
+    enabled: false
+    conf_min: 0.5
+
+  missing:
+    interpolation:
+      enabled: true
+      method: linear
+      limit:
+        type: seconds
+        max_gap_s: 0.2
+        max_gap_frames: 6
+        embedding:
+          m: 4
+          tau: 10
+          units: frames
+
+  windowing:
+    enabled: true
+    units: seconds
+    length_s: 5.0
+    step_s: 2.5
+    length_frames: 150
+    step_frames: 75
+    include_partial: false
+    trim_edges_s:
+      start: 0.0
+      end: 0.0
+    qc_keypoints: all
+    qc_dims: xy
+    drop:
+      enabled: true
+      missing_rule: any_dim_nan
+      max_missing_frac: 0.4
+      max_nans: null
+      scope: aggregate
+      per_keypoint_policy: any
+
+  alignment:
+    enabled: false
+    method: procrustes
+    template_scope: global
+    transform: similarity
+    rotation: true
+    scaling: true
+    translation: true
+    keypoints: all
+    reflection: false
+    template_agg: mean
+    min_valid_frac_per_kp: 0.6
+    min_kps_for_fit: 2
+
+  normalization:
+    enabled: false
+    method: none
+    scope: global_trial
+
+  detrend_filter:
+    detrend: none
+    lowpass:
+      enabled: false
+      cutoff_hz: 6
+      order: 4
+
+  spatial:
+    centering:
+      method: none
+      anchor_keypoint: null
+    scale:
+      method: none

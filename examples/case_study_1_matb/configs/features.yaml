@@ -1,0 +1,11 @@
+features:
+  # Keypoints for features (must be subset of preprocessed keypoints)
+  keypoints: all
+
+  kinematics:
+    enabled: true
+    metrics: [speed, accel]
+
+  geometry:
+    enabled: false
+    pairwise_distances: true
