@@ -1,16 +1,169 @@
 rqa:
-  keypoints: all
-  signal: coords
-  m: 4
-  tau: 10
-  l_min: 2
-  v_min: 2
+  - analysis_type: "rqa"
+    keypoints: ["pupil_mag"]
+    embedding: { dim: 4, tau: 20 }
+    norm: "minmax"          
+    rescale_norm: true      
+    radius_mode: "absolute"
+    radius: 0.2             
+    line_min: 4             
+    theiler: 2
+    output_name: "rqa_pupil_mag"
 
-  epsilon:
-    mode: percentile   # absolute | percentile | rr_target
-    value: 10.0
+  - analysis_type: "rqa"
+    keypoints: ["blink"]
+    embedding: { dim: 4, tau: 20 }
+    norm: "minmax"
+    rescale_norm: true
+    radius_mode: "absolute"
+    radius: 0.2
+    line_min: 4
+    theiler: 2
+    output_name: "rqa_blink"
 
-  analysis: rqa        # rqa | crqa
-  plots:
-    enabled: true
-    max_plots: 3
+  - analysis_type: "rqa"
+    keypoints: ["mouth_aperture"]
+    embedding: { dim: 4, tau: 20 }
+    norm: "minmax"
+    rescale_norm: true
+    radius_mode: "absolute"
+    radius: 0.2
+    line_min: 4
+    theiler: 2
+    output_name: "rqa_mouth_aperture"
+
+  - analysis_type: "rqa"
+    keypoints: ["pupil_dx"]
+    embedding: { dim: 4, tau: 20 }
+    norm: "minmax"
+    rescale_norm: true
+    radius_mode: "absolute"
+    radius: 0.2
+    line_min: 4
+    theiler: 2
+    output_name: "rqa_pupil_dx"
+
+  - analysis_type: "rqa"
+    keypoints: ["pupil_dy"]
+    embedding: { dim: 4, tau: 20 }
+    norm: "minmax"
+    rescale_norm: true
+    radius_mode: "absolute"
+    radius: 0.2
+    line_min: 4
+    theiler: 2
+    output_name: "rqa_pupil_dy"
+
+  - analysis_type: "rqa"
+    keypoints: ["head_rotation"]
+    embedding: { dim: 4, tau: 20 }
+    norm: "minmax"
+    rescale_norm: true
+    radius_mode: "absolute"
+    radius: 0.2
+    line_min: 4
+    theiler: 2
+    output_name: "rqa_head_rotation"
+
+  - analysis_type: "rqa"
+    keypoints: ["head_translation_mag"]
+    embedding: { dim: 4, tau: 20 }
+    norm: "minmax"
+    rescale_norm: true
+    radius_mode: "absolute"
+    radius: 0.2
+    line_min: 4
+    theiler: 2
+    output_name: "rqa_head_translation_mag"
+
+  - analysis_type: "rqa"
+    keypoints: ["head_motion_mag"]
+    embedding: { dim: 4, tau: 20 }
+    norm: "minmax"
+    rescale_norm: true
+    radius_mode: "absolute"
+    radius: 0.2
+    line_min: 4
+    theiler: 2
+    output_name: "rqa_head_motion_mag"
+
+  - analysis_type: "rqa"
+    keypoints: ["head_tx"]
+    embedding: { dim: 4, tau: 20 }
+    norm: "minmax"
+    rescale_norm: true
+    radius_mode: "absolute"
+    radius: 0.2
+    line_min: 4
+    theiler: 2
+    output_name: "rqa_head_tx"
+
+  - analysis_type: "rqa"
+    keypoints: ["head_ty"]
+    embedding: { dim: 4, tau: 20 }
+    norm: "minmax"
+    rescale_norm: true
+    radius_mode: "absolute"
+    radius: 0.2
+    line_min: 4
+    theiler: 2
+    output_name: "rqa_head_ty"
+
+  - analysis_type: "rqa"
+    keypoints: ["head_scale"]
+    embedding: { dim: 4, tau: 20 }
+    norm: "minmax"
+    rescale_norm: true
+    radius_mode: "absolute"
+    radius: 0.2
+    line_min: 4
+    theiler: 2
+    output_name: "rqa_head_scale"
+
+  - analysis_type: "crqa"
+    keypoint_x: ["head_translation_mag"] 
+    keypoint_y: ["pupil_mag"]
+    embedding: { dim: 4, tau: 20 }
+    norm: "minmax"          # align to legacy normalization
+    rescale_norm: true      # align to legacy rescaling
+    radius_mode: "absolute"
+    radius: 0.3             # legacy CRQA radius
+    line_min: 2
+    theiler: 0
+    output_name: "crqa_pupil_face"
+
+  - analysis_type: "crqa"
+    keypoint_x: ["head_motion_mag"]
+    keypoint_y: ["pupil_mag"]
+    embedding: { dim: 4, tau: 20 }
+    norm: "minmax"
+    rescale_norm: true
+    radius_mode: "absolute"
+    radius: 0.3
+    line_min: 2
+    theiler: 0
+    output_name: "crqa_head_motion_pupil_mag"
+
+  - analysis_type: "crqa"
+    keypoint_x: ["head_tx"]
+    keypoint_y: ["pupil_dx"]
+    embedding: { dim: 4, tau: 20 }
+    norm: "minmax"
+    rescale_norm: true
+    radius_mode: "absolute"
+    radius: 0.3
+    line_min: 2
+    theiler: 0
+    output_name: "crqa_head_tx_pupil_dx"
+
+  - analysis_type: "crqa"
+    keypoint_x: ["head_ty"]
+    keypoint_y: ["pupil_dy"]
+    embedding: { dim: 4, tau: 20 }
+    norm: "minmax"
+    rescale_norm: true
+    radius_mode: "absolute"
+    radius: 0.3
+    line_min: 2
+    theiler: 0
+    output_name: "crqa_head_ty_pupil_dy"

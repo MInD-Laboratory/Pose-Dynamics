@@ -10,6 +10,7 @@ import argparse
 from pathlib import Path
 
 from pose_dynamics.pca.api import run_pca
+from pose_dynamics.progress import run_steps
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -30,13 +31,21 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
-    run_pca(
-        pose_clean_path=args.pose_path,
-        windows_path=args.windows_path,
-        features_path=args.features_path,
-        config=args.config_path,
-        out_dir=args.out_dir,
-        overwrite=bool(args.overwrite),
+    run_steps(
+        [
+            (
+                "Run PCA",
+                lambda: run_pca(
+                    pose_clean_path=args.pose_path,
+                    windows_path=args.windows_path,
+                    features_path=args.features_path,
+                    config=args.config_path,
+                    out_dir=args.out_dir,
+                    overwrite=bool(args.overwrite),
+                ),
+            )
+        ],
+        title="pose-dynamics pca",
     )
     return 0
 

@@ -2,13 +2,83 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from math import isfinite
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
+from pose_dynamics.features.facial import facial_feature_series
 from pose_dynamics.features.geometry import pairwise_distance_features
+from pose_dynamics.features.head_motion import head_motion_series
 from pose_dynamics.features.kinematics import kinematics_features
 from pose_dynamics.features.schema import ConfigError, FeaturesConfig
+from pose_dynamics.features.stats import derivative_series, summary_stats
+
+
+def _estimate_dt(values: pd.Series) -> float:
+    uniq = pd.Series(values.dropna().unique()).sort_values()
+    if uniq.empty or uniq.shape[0] <= 1:
+        return float("nan")
+    diffs = uniq.diff().dropna().to_numpy(dtype=float)
+    diffs = diffs[np.isfinite(diffs) & (diffs > 0)]
+    if diffs.size == 0:
+        return float("nan")
+    return float(np.median(diffs))
+
+
+def _append_feature_stats(
+    rows: list[dict],
+    *,
+    trial_id: str,
+    window_id: str | int,
+    keypoint: str,
+    base_name: str,
+    series: np.ndarray,
+    stats: list[str],
+    derivatives: list[str],
+    dt: float,
+) -> None:
+    if series.size == 0:
+        return
+
+    base_stats = summary_stats(series, stats)
+    for stat_name, val in base_stats.items():
+        rows.append(
+            {
+                "trial_id": trial_id,
+                "window_id": window_id,
+                "keypoint": keypoint,
+                "feature": f"{base_name}_{stat_name}",
+                "value": val,
+            }
+        )
+
+    if not derivatives or not (isfinite(dt) and dt > 0):
+        return
+
+    for deriv in derivatives:
+        if deriv == "velocity":
+            derived = derivative_series(series, dt, order=1)
+            suffix = "vel"
+        elif deriv == "acceleration":
+            derived = derivative_series(series, dt, order=2)
+            suffix = "acc"
+        else:
+            continue
+        if derived.size == 0:
+            continue
+        d_stats = summary_stats(derived, stats)
+        for stat_name, val in d_stats.items():
+            rows.append(
+                {
+                    "trial_id": trial_id,
+                    "window_id": window_id,
+                    "keypoint": keypoint,
+                    "feature": f"{base_name}_{suffix}_{stat_name}",
+                    "value": val,
+                }
+            )
 
 
 @dataclass(frozen=True)
@@ -24,6 +94,7 @@ def run_feature_extract(
     config: FeaturesConfig | str | Path,
     out_dir: str | Path,
     *,
+    alignment_transforms_path: str | Path | None = None,
     overwrite: bool = False,
 ) -> FeatureOutputs:
     out_dir = Path(out_dir)
@@ -39,6 +110,9 @@ def run_feature_extract(
 
     df = pd.read_parquet(pose_clean_path)
     windows = pd.read_parquet(windows_path)
+    transforms_df = None
+    if alignment_transforms_path is not None:
+        transforms_df = pd.read_parquet(Path(alignment_transforms_path))
 
     if df.empty:
         raise ConfigError("pose_clean.parquet is empty.")
@@ -82,8 +156,8 @@ def run_feature_extract(
             provenance_path=provenance_path,
         )
 
-    if "dropped" in windows.columns:
-        windows = windows[~windows["dropped"]].copy()
+    # Legacy pipeline kept windows even if QC flagged them; keep all here
+    # to mirror that behavior for this dataset.
 
     all_kps = sorted(df["keypoint"].dropna().unique().tolist())
     if cfg.keypoints == "all":
@@ -115,6 +189,7 @@ def run_feature_extract(
 
         df_win = df_trial.loc[mask]
         df_win = df_win[df_win["keypoint"].isin(kps)]
+        dt_pose = _estimate_dt(df_win[time_col]) if not df_win.empty else float("nan")
 
         if cfg.kinematics.enabled:
             for kp in kps:
@@ -146,18 +221,72 @@ def run_feature_extract(
                     }
                 )
 
+        if cfg.facial.enabled:
+            series_map = facial_feature_series(df_win, time_col, cfg.facial)
+            for base, series in series_map.items():
+                _append_feature_stats(
+                    features_rows,
+                    trial_id=trial_id,
+                    window_id=w["window_id"],
+                    keypoint="composite",
+                    base_name=base,
+                    series=series,
+                    stats=cfg.facial.stats,
+                    derivatives=cfg.facial.derivatives,
+                    dt=dt_pose,
+                )
+
+        if cfg.head_motion.enabled:
+            if transforms_df is None or transforms_df.empty:
+                raise ConfigError(
+                    "head_motion.enabled requires alignment_transforms_path with framewise transforms."
+                )
+            df_trans_trial = transforms_df[transforms_df["trial_id"] == trial_id]
+            if df_trans_trial.empty:
+                continue
+            if time_col not in df_trans_trial.columns:
+                raise ConfigError(f"alignment transforms missing '{time_col}' column.")
+            if units == "seconds":
+                mask_t = (df_trans_trial[time_col] >= s) & (
+                    df_trans_trial[time_col] < e
+                )
+            else:
+                mask_t = (df_trans_trial[time_col] >= s) & (
+                    df_trans_trial[time_col] < e
+                )
+            df_trans_win = df_trans_trial.loc[mask_t]
+            if df_trans_win.empty:
+                continue
+
+            series_map = head_motion_series(df_trans_win, time_col)
+            dt_trans = _estimate_dt(df_trans_win[time_col])
+            for base, series in series_map.items():
+                _append_feature_stats(
+                    features_rows,
+                    trial_id=trial_id,
+                    window_id=w["window_id"],
+                    keypoint="head_motion",
+                    base_name=base,
+                    series=series,
+                    stats=cfg.head_motion.stats,
+                    derivatives=cfg.head_motion.derivatives,
+                    dt=dt_trans,
+                )
+
     features_df = pd.DataFrame(features_rows)
 
     features_path = out_dir / "features.parquet"
+    features_csv_path = out_dir / "features.csv"
     qc_path = out_dir / "qc_features.json"
     provenance_path = out_dir / "provenance_features.json"
 
     if not overwrite:
-        for p in [features_path, qc_path, provenance_path]:
+        for p in [features_path, features_csv_path, qc_path, provenance_path]:
             if p.exists():
                 raise FileExistsError(f"Output already exists: {p}")
 
     features_df.to_parquet(features_path, index=False)
+    features_df.to_csv(features_csv_path, index=False)
 
     qc_payload = {
         "n_rows": int(features_df.shape[0]),

@@ -4,8 +4,51 @@ from typing import Iterable
 
 import pandas as pd
 
+from pose_dynamics.preprocess.missing import _max_gap_samples
 from pose_dynamics.preprocess.schema import ConfigError, PreprocessConfig
 from pose_dynamics.preprocess.timebase import ensure_time_column
+
+WINDOW_BASE_COLUMNS = [
+    "trial_id",
+    "window_id",
+    "start",
+    "end",
+    "n_samples",
+    "units",
+]
+WINDOW_BASE_DTYPES = {
+    "trial_id": "string",
+    "window_id": "string",
+    "start": "float64",
+    "end": "float64",
+    "n_samples": "int64",
+    "units": "string",
+}
+WINDOW_SCORED_COLUMNS = WINDOW_BASE_COLUMNS + [
+    "missing_frac",
+    "n_missing",
+    "dropped",
+    "drop_reason",
+]
+WINDOW_SCORED_DTYPES = {
+    **WINDOW_BASE_DTYPES,
+    "missing_frac": "float64",
+    "n_missing": "int64",
+    "dropped": "bool",
+    "drop_reason": "string",
+}
+
+
+def _empty_df(columns: list[str], dtypes: dict[str, str]) -> pd.DataFrame:
+    return pd.DataFrame({col: pd.Series(dtype=dtypes[col]) for col in columns})
+
+
+def _empty_windows_df() -> pd.DataFrame:
+    return _empty_df(WINDOW_BASE_COLUMNS, WINDOW_BASE_DTYPES)
+
+
+def _empty_windows_scored_df() -> pd.DataFrame:
+    return _empty_df(WINDOW_SCORED_COLUMNS, WINDOW_SCORED_DTYPES)
 
 
 def _get_qc_keypoints(df: pd.DataFrame, cfg: PreprocessConfig) -> Iterable[str]:
@@ -19,9 +62,7 @@ def build_windows(
 ) -> pd.DataFrame:
     """Return windows table with (trial_id, window_id, start/end, n_samples)."""
     if not cfg.windowing.enabled:
-        return pd.DataFrame(
-            columns=["trial_id", "window_id", "start", "end", "n_samples", "units"]
-        )
+        return _empty_windows_df()
 
     df_use = df
     if cfg.windowing.units == "seconds":
@@ -91,7 +132,9 @@ def build_windows(
                 }
             )
 
-    return pd.DataFrame(windows)
+    if not windows:
+        return _empty_windows_df()
+    return pd.DataFrame(windows, columns=WINDOW_BASE_COLUMNS)
 
 
 def score_windows_missingness(
@@ -99,10 +142,7 @@ def score_windows_missingness(
 ) -> pd.DataFrame:
     """Compute missing_frac, n_missing, dropped, drop_reason using windowing.drop settings."""
     if windows.empty:
-        windows_out = windows.copy()
-        for col in ["missing_frac", "n_missing", "dropped", "drop_reason"]:
-            windows_out[col] = []
-        return windows_out
+        return _empty_windows_scored_df()
 
     if cfg.windowing.units == "seconds":
         time_col = "time" if "time" in df.columns else "frame"
@@ -122,11 +162,21 @@ def score_windows_missingness(
     qc_kps = set(_get_qc_keypoints(df, cfg))
     df_qc = df[df["keypoint"].isin(qc_kps)].copy()
 
+    # Pre-compute per-trial max allowed gap (in samples) based on interpolation limit.
+    trial_max_gap: dict[str, int] = {}
+    for trial_id, df_trial in df_qc.groupby("trial_id", sort=False):
+        try:
+            trial_max_gap[trial_id] = _max_gap_samples(df_trial, cfg)
+        except ConfigError:
+            trial_max_gap[trial_id] = 0
+
     out_rows = []
     for _, w in windows.iterrows():
         trial_id = w["trial_id"]
         s = float(w["start"])
         e = float(w["end"])
+
+        max_gap = trial_max_gap.get(trial_id, 0)
 
         df_trial = df_qc[df_qc["trial_id"] == trial_id]
         if cfg.windowing.include_partial:
@@ -151,10 +201,32 @@ def score_windows_missingness(
             else:
                 miss = dims_df.isna().all(axis=1)
 
+            # Longest consecutive NaN run per keypoint.
+            longest_run = 0
+            if max_gap > 0:
+                df_run = df_win.assign(_missing=miss).sort_values(time_col)
+                for _, kp_df in df_run.groupby("keypoint", sort=False):
+                    kp_miss = kp_df["_missing"].to_numpy(dtype=bool)
+                    if kp_miss.size == 0:
+                        continue
+                    curr = 0
+                    kp_longest = 0
+                    for flag in kp_miss:
+                        if flag:
+                            curr += 1
+                            kp_longest = max(kp_longest, curr)
+                        else:
+                            curr = 0
+                    longest_run = max(longest_run, kp_longest)
+
+            gap_exceeds = max_gap > 0 and longest_run > max_gap
+
             if cfg.windowing.drop.scope == "aggregate":
                 n_missing = int(miss.sum())
                 missing_frac = float(n_missing / len(miss))
-                dropped = missing_frac > cfg.windowing.drop.max_missing_frac
+                dropped = gap_exceeds or (
+                    missing_frac > cfg.windowing.drop.max_missing_frac
+                )
                 if cfg.windowing.drop.max_nans is not None:
                     dropped = dropped or (n_missing > cfg.windowing.drop.max_nans)
             else:
@@ -170,7 +242,7 @@ def score_windows_missingness(
                     drop_reason = "empty_window"
                 else:
                     missing_frac = float(per_kp["missing_frac"].max())
-                    n_missing = int(per_kp["n_missing"].max())
+                    n_missing = int(per_kp["n_missing"].sum())
 
                     if cfg.windowing.drop.per_keypoint_policy == "any":
                         exceeds = (
@@ -180,7 +252,7 @@ def score_windows_missingness(
                             exceeds = exceeds | (
                                 per_kp["n_missing"] > cfg.windowing.drop.max_nans
                             )
-                        dropped = bool(exceeds.any())
+                        dropped = gap_exceeds or bool(exceeds.any())
                     else:
                         exceeds = (
                             per_kp["missing_frac"] > cfg.windowing.drop.max_missing_frac
@@ -189,10 +261,12 @@ def score_windows_missingness(
                             exceeds = exceeds | (
                                 per_kp["n_missing"] > cfg.windowing.drop.max_nans
                             )
-                        dropped = bool(exceeds.all())
+                        dropped = gap_exceeds or bool(exceeds.all())
 
             if dropped and drop_reason is None:
-                if (
+                if gap_exceeds:
+                    drop_reason = "max_gap"
+                elif (
                     cfg.windowing.drop.max_nans is not None
                     and n_missing > cfg.windowing.drop.max_nans
                 ):
@@ -211,4 +285,6 @@ def score_windows_missingness(
         )
         out_rows.append(out)
 
-    return pd.DataFrame(out_rows)
+    if not out_rows:
+        return _empty_windows_scored_df()
+    return pd.DataFrame(out_rows, columns=WINDOW_SCORED_COLUMNS)

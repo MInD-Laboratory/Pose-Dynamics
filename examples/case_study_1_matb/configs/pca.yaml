@@ -1,8 +1,0 @@
-pca:
-  include_pose_summary: true
-  include_features: true
-  standardize: true
-  n_components: 5
-  # Alternative to n_components: choose enough components to reach this variance.
-  # variance_threshold: 0.95
-  scope: global

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Tuple
 
+import numpy as np
 import pandas as pd
 
 from pose_dynamics.preprocess.alignment.procrustes import align_procrustes
@@ -20,9 +21,64 @@ from pose_dynamics.preprocess.windowing import (
 )
 
 
+def _add_interocular_screen(df: pd.DataFrame) -> pd.DataFrame:
+    """Compute inter-ocular distance on screen-normalized coordinates before alignment.
+
+    Matches legacy behavior where distances were scaled using pre-Procrustes, screen-space
+    coordinates (landmarks 37 and 46). The resulting series is merged back on time so it can
+    be used later for feature scaling without being affected by alignment transforms.
+    """
+
+    if not {"trial_id", "keypoint", "x", "y"}.issubset(df.columns):
+        return df
+
+    time_col = "time" if "time" in df.columns else "frame"
+    if time_col not in df.columns:
+        return df
+
+    # Landmarks use OpenPose indexing; match regardless of dtype (string or numeric)
+    key_as_str = df["keypoint"].astype(str)
+    left_eye = df[key_as_str == "37"]
+    right_eye = df[key_as_str == "46"]
+    if left_eye.empty or right_eye.empty:
+        return df
+
+    left = (
+        left_eye.groupby(["trial_id", time_col])[["x", "y"]]
+        .mean()
+        .rename(columns={"x": "x_left", "y": "y_left"})
+    )
+    right = (
+        right_eye.groupby(["trial_id", time_col])[["x", "y"]]
+        .mean()
+        .rename(columns={"x": "x_right", "y": "y_right"})
+    )
+
+    interocular = left.join(right, how="inner")
+    if interocular.empty:
+        return df
+
+    dx = interocular["x_left"] - interocular["x_right"]
+    dy = interocular["y_left"] - interocular["y_right"]
+    interocular["interocular_screen"] = np.sqrt(dx**2 + dy**2)
+
+    io_df = interocular.reset_index()[["trial_id", time_col, "interocular_screen"]]
+    df_out = df.merge(io_df, on=["trial_id", time_col], how="left")
+
+    # Keep a copy of the pre-alignment, screen-normalized coordinates so that
+    # facial apertures can be measured in the same space as the interocular distance.
+    # These columns are preserved through later alignment transforms.
+    if "x_screen" not in df_out.columns and "y_screen" not in df_out.columns:
+        df_out = df_out.copy()
+        df_out["x_screen"] = df_out["x"]
+        df_out["y_screen"] = df_out["y"]
+
+    return df_out
+
+
 def run_pipeline(
     df: pd.DataFrame, recording: dict, cfg: PreprocessConfig
-) -> Tuple[pd.DataFrame, pd.DataFrame, dict, list]:
+) -> Tuple[pd.DataFrame, pd.DataFrame, dict, list, pd.DataFrame | None]:
     """
     Minimal preprocessing pipeline for selection + windowing.
 
@@ -40,7 +96,8 @@ def run_pipeline(
     df_clean = apply_confidence_mask(df_clean, cfg)
     df_clean = interpolate_missing(df_clean, cfg)
     df_clean = apply_spatial(df_clean, cfg)
-    df_clean, transforms = align_procrustes(df_clean, cfg)
+    df_clean = _add_interocular_screen(df_clean)
+    df_clean, transforms, transforms_df = align_procrustes(df_clean, cfg)
 
     windows = pd.DataFrame()
     if cfg.normalization.enabled and cfg.normalization.scope == "windowed":
@@ -75,4 +132,4 @@ def run_pipeline(
         "filtering": filter_meta,
     }
 
-    return df_clean, windows_scored, qc, transforms
+    return df_clean, windows_scored, qc, transforms, transforms_df

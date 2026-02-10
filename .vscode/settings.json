@@ -1,0 +1,11 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "/Users/cartersale/Documents/Research/Projects/pose-dynamics/.venv/bin/python": true,
+        "/^python3 - <<'PY'\nimport pandas as pd\nfrom pathlib import Path\np=Path\\('artifacts/preprocess/matb/pose_clean\\.parquet'\\)\ndf=pd\\.read_parquet\\(p\\)\nprint\\(df\\.columns\\[:20\\]\\)\nprint\\(df\\.head\\(\\)\\)\nprint\\(df\\[df\\['keypoint'\\]=='blink'\\]\\.head\\(\\)\\)\nPY$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/Users/cartersale/Research/Projects/pose-dynamics/.venv/bin/python": true
+    },
+    "python-envs.pythonProjects": []
+}

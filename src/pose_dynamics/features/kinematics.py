@@ -37,11 +37,13 @@ def kinematics_features(
     if "speed" in metrics:
         out["speed_mean"] = float(np.nanmean(speed))
         out["speed_std"] = float(np.nanstd(speed))
+        out["speed_rms"] = float(np.sqrt(np.nanmean(speed**2)))
 
     if "accel" in metrics:
         accel = np.diff(diff, axis=0) / dt
         acc_mag = np.linalg.norm(accel, axis=1)
         out["accel_mean"] = float(np.nanmean(acc_mag))
         out["accel_std"] = float(np.nanstd(acc_mag))
+        out["accel_rms"] = float(np.sqrt(np.nanmean(acc_mag**2)))
 
     return out

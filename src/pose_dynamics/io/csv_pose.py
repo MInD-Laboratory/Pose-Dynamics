@@ -34,6 +34,13 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
+from rich.console import Console
+
+from pose_dynamics.progress import track_iterable
+
+console = Console()
 
 # -------------------------
 # Column parsing utilities
@@ -431,19 +438,47 @@ def ingest_pose_csv_dir(
             f"No CSV files found in {in_path} matching pattern {glob_pattern!r}."
         )
 
-    trial_results: List[TrialIngestResult] = []
     trials_meta: List[dict] = []
     qc_rows: List[dict] = []
+    pose_parquet = out_dir / "pose.parquet"
+    if pose_parquet.exists():
+        pose_parquet.unlink()
+    writer: pq.ParquetWriter | None = None
+    writer_created = False
+
+    def _close_writer() -> None:
+        nonlocal writer
+        if writer is not None:
+            writer.close()
+            writer = None
 
     # Ingest each file
-    for csv_path in csv_files:
+    def _process(csv_path: Path) -> None:
+        nonlocal writer, writer_created
         res = wide_pose_csv_to_long(csv_path, fps=fps)
-        trial_results.append(res)
+        table = pa.Table.from_pandas(res.df_long, preserve_index=False)
+        if writer is None:
+            writer = pq.ParquetWriter(
+                str(pose_parquet), table.schema, compression="snappy"
+            )
+            writer_created = True
+        if table.num_rows > 0:
+            writer.write_table(table)
         trials_meta.append(res.trial_meta)
         qc_rows.append(res.qc)
 
-    # Concatenate into one big canonical dataframe.
-    df_all = pd.concat([r.df_long for r in trial_results], ignore_index=True)
+    try:
+        track_iterable(
+            csv_files,
+            title="Ingest CSVs",
+            handler=_process,
+            label_fn=lambda p: p.name,
+        )
+    finally:
+        _close_writer()
+
+    if not writer_created:
+        raise RuntimeError("ingest produced no data; check input files")
 
     # Determine whether the run is time-mode or frame-mode:
     # It's allowed to mix (some trials with time, some with frame).
@@ -468,14 +503,12 @@ def ingest_pose_csv_dir(
     }
 
     # Write outputs.
-    pose_parquet = out_dir / "pose.parquet"
     recording_json = out_dir / "recording.json"
     qc_json = out_dir / "qc_ingest.json"
 
-    df_all.to_parquet(pose_parquet, index=False)
+    with console.status("Writing ingest metadata...", spinner="dots"):
+        with recording_json.open("w", encoding="utf-8") as f:
+            json.dump(run_meta, f, indent=2)
 
-    with recording_json.open("w", encoding="utf-8") as f:
-        json.dump(run_meta, f, indent=2)
-
-    with qc_json.open("w", encoding="utf-8") as f:
-        json.dump(qc_rows, f, indent=2)
+        with qc_json.open("w", encoding="utf-8") as f:
+            json.dump(qc_rows, f, indent=2)

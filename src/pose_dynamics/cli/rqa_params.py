@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from pose_dynamics.progress import run_steps
 from pose_dynamics.rqa.params import run_rqa_params
 
 
@@ -29,12 +30,20 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
-    run_rqa_params(
-        pose_clean_path=args.pose_path,
-        windows_path=args.windows_path,
-        config=args.config_path,
-        out_dir=args.out_dir,
-        overwrite=bool(args.overwrite),
+    run_steps(
+        [
+            (
+                "Estimate parameters",
+                lambda: run_rqa_params(
+                    pose_clean_path=args.pose_path,
+                    windows_path=args.windows_path,
+                    config=args.config_path,
+                    out_dir=args.out_dir,
+                    overwrite=bool(args.overwrite),
+                ),
+            )
+        ],
+        title="pose-dynamics rqa-params",
     )
     return 0
 

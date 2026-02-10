@@ -37,7 +37,7 @@ def _get(d: Dict[str, Any], key: str, default: Any = None) -> Any:
 
 @dataclass(frozen=True)
 class EpsilonConfig:
-    mode: Literal["absolute", "percentile", "rr_target"] = "percentile"
+    mode: Literal["absolute", "percentile", "rr_target", "mean_scaled"] = "percentile"
     value: float = 10.0
 
     @staticmethod
@@ -73,6 +73,7 @@ class RQAConfig:
     tau: int = 10
     l_min: int = 2
     v_min: int = 2
+    theiler: int = 0
     epsilon: EpsilonConfig = EpsilonConfig()
     analysis: Literal["rqa", "crqa"] = "rqa"
     plots: PlotConfig = PlotConfig()
@@ -92,6 +93,7 @@ class RQAConfig:
                 "epsilon",
                 "analysis",
                 "plots",
+                "theiler",
             ],
             ctx,
         )
@@ -107,6 +109,7 @@ class RQAConfig:
             tau=int(_get(d, "tau", 10)),
             l_min=int(_get(d, "l_min", 2)),
             v_min=int(_get(d, "v_min", 2)),
+            theiler=int(_get(d, "theiler", 0)),
             epsilon=EpsilonConfig.from_dict(
                 _get(d, "epsilon", {}), ctx=f"{ctx}.epsilon"
             ),

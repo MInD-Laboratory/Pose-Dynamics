@@ -404,6 +404,8 @@ class AlignmentConfig:
     enabled: bool = False
     method: Literal["procrustes"] = "procrustes"
 
+    framewise: bool = False
+
     template_scope: Literal["trial", "global"] = "global"
     transform: Literal["rigid", "similarity"] = "similarity"
     rotation: Optional[bool] = None
@@ -424,6 +426,7 @@ class AlignmentConfig:
             [
                 "enabled",
                 "method",
+                "framewise",
                 "template_scope",
                 "transform",
                 "rotation",
@@ -447,6 +450,7 @@ class AlignmentConfig:
         return AlignmentConfig(
             enabled=bool(_get(d, "enabled", False)),
             method=_get(d, "method", "procrustes"),
+            framewise=bool(_get(d, "framewise", False)),
             template_scope=_get(d, "template_scope", "global"),
             transform=_get(d, "transform", "similarity"),
             rotation=_get(d, "rotation", None),
@@ -535,13 +539,49 @@ class SpatialCenteringConfig:
 
 @dataclass(frozen=True)
 class SpatialScaleConfig:
-    method: Literal["none", "unit_range"] = "none"
+    method: Literal["none", "unit_range", "screen"] = "none"
+    width_px: Optional[float] = None
+    height_px: Optional[float] = None
 
     @staticmethod
     def from_dict(x: Any, ctx: str = "spatial.scale") -> "SpatialScaleConfig":
         d = _expect_dict(x, ctx)
-        _reject_unknown_keys(d, ["method"], ctx)
-        return SpatialScaleConfig(method=_get(d, "method", "none"))
+        _reject_unknown_keys(d, ["method", "width_px", "height_px"], ctx)
+
+        method = _get(d, "method", "none")
+        if method not in ("none", "unit_range", "screen"):
+            raise ConfigError(
+                f"{ctx}.method must be one of ['none', 'unit_range', 'screen']."
+            )
+
+        width = _get(d, "width_px", None)
+        height = _get(d, "height_px", None)
+
+        width_f = None if width is None else float(width)
+        height_f = None if height is None else float(height)
+
+        if method == "screen":
+            if width_f is None or height_f is None:
+                raise ConfigError(
+                    f"{ctx}.width_px and {ctx}.height_px required when method='screen'."
+                )
+            if width_f <= 0 or height_f <= 0:
+                raise ConfigError(
+                    f"{ctx}.width_px and height_px must be positive when method='screen'."
+                )
+        else:
+            if width_f is not None or height_f is not None:
+                raise ConfigError(
+                    f"{ctx}.width_px/height_px only valid when method='screen'."
+                )
+            width_f = None
+            height_f = None
+
+        return SpatialScaleConfig(
+            method=method,
+            width_px=width_f,
+            height_px=height_f,
+        )
 
 
 @dataclass(frozen=True)

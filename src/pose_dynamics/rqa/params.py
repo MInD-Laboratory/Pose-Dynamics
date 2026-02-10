@@ -66,32 +66,52 @@ def _embed(x: np.ndarray, m: int, tau: int) -> np.ndarray:
 
 
 def _fnn(x: np.ndarray, max_dim: int, tau: int, rtol: float, atol: float) -> np.ndarray:
+    """
+    Calculates the false nearest neighbors rate for a given time series.
+    This version is optimized using scipy's cKDTree for faster neighbor searches.
+    """
+    from scipy.spatial import cKDTree
+
     x = x[np.isfinite(x)]
     if x.size < (max_dim + 1) * tau + 2:
         return np.array([])
 
     fnn_rates = []
     for m in range(1, max_dim + 1):
+        # Embed in m and m+1 dimensions
         Xm = _embed(x, m, tau)
         Xm1 = _embed(x, m + 1, tau)
-        if Xm.size == 0 or Xm1.size == 0:
+
+        if Xm.shape[0] < 2 or Xm1.shape[0] < 2:
             fnn_rates.append(np.nan)
             continue
-        n2 = Xm1.shape[0]
-        Xm = Xm[:n2]
-        Xm1 = Xm1[:n2]
-        # nearest neighbor in m-dim
-        dists = np.linalg.norm(Xm[:, None, :] - Xm[None, :, :], axis=2)
-        np.fill_diagonal(dists, np.inf)
-        nn_idx = np.argmin(dists, axis=1)
-        Rm = dists[np.arange(dists.shape[0]), nn_idx]
-        # distance in m+1 dim
+
+        # Ensure consistent length
+        n_points = min(Xm.shape[0], Xm1.shape[0])
+        Xm = Xm[:n_points]
+        Xm1 = Xm1[:n_points]
+
+        # Use cKDTree for fast nearest neighbor search in m-dim
+        tree_m = cKDTree(Xm)
+        # Query for the 2 nearest neighbors; the first is the point itself
+        dists_m, idx_m = tree_m.query(Xm, k=2, workers=-1)
+
+        # Nearest neighbor distances and indices (k=1 because k=0 is the point itself)
+        Rm = dists_m[:, 1]
+        nn_idx = idx_m[:, 1]
+
+        # Calculate distance in (m+1)-dim to the nearest neighbor from m-dim
         Rm1 = np.linalg.norm(Xm1 - Xm1[nn_idx], axis=1)
+
+        # FNN criteria
+        # Avoid division by zero for identical points
         ratio = np.full_like(Rm, np.inf, dtype=float)
-        valid = Rm > 0
-        ratio[valid] = (Rm1[valid] - Rm[valid]) / Rm[valid]
+        valid = Rm > 1e-10  # Use a small epsilon to avoid floating point issues
+        ratio[valid] = Rm1[valid] / Rm[valid]
+
         fnn = (ratio > rtol) | (Rm1 > atol)
         fnn_rates.append(float(np.mean(fnn)))
+
     return np.array(fnn_rates, dtype=float)
 
 

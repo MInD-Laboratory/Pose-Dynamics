@@ -61,6 +61,17 @@ def apply_spatial(df: pd.DataFrame, cfg: PreprocessConfig) -> pd.DataFrame:
             denom = denom.where(denom != 0, 1.0)
             df_out[d] = (df_out[d] - df_out[f"_{d}_min"]) / denom
             df_out.drop(columns=[f"_{d}_min", f"_{d}_max"], inplace=True)
+    elif scale.method == "screen":
+        width = scale.width_px
+        height = scale.height_px
+        if width is None or height is None:
+            raise ConfigError("spatial.scale.screen requires width_px and height_px.")
+        if width <= 0 or height <= 0:
+            raise ConfigError("spatial.scale width_px/height_px must be positive.")
+        if "x" in dims:
+            df_out["x"] = df_out["x"] / width
+        if "y" in dims:
+            df_out["y"] = df_out["y"] / height
     elif scale.method != "none":
         raise ConfigError("unknown spatial.scale.method")
 

@@ -1,11 +1,52 @@
 features:
-  # Keypoints for features (must be subset of preprocessed keypoints)
-  keypoints: all
+  keypoints:
+    - "30"
+    - "31"
+    - "37"
+    - "38"
+    - "39"
+    - "41"
+    - "42"
+    - "44"
+    - "45"
+    - "46"
+    - "47"
+    - "48"
+    - "63"
+    - "67"
+    - "69"
+    - "70"
 
   kinematics:
     enabled: true
-    metrics: [speed, accel]
 
   geometry:
     enabled: false
-    pairwise_distances: true
+
+  facial:
+    enabled: true
+    center_face: ["28", "29", "30", "31", "32", "33", "34", "35", "36"]
+    scale_by_interocular: true
+    stats: [mean, rms]
+    derivatives: [velocity, acceleration]
+    blink:
+      enabled: true
+      left_upper: ["38", "39"]
+      left_lower: ["41", "42"]
+      right_upper: ["44", "45"]
+      right_lower: ["47", "48"]
+    mouth:
+      enabled: true
+      upper: "63"
+      lower: "67"
+    pupil:
+      enabled: true
+      left_pupil: "69"
+      right_pupil: "70"
+      left_eye_contour: ["37", "38", "39", "41", "42"]
+      right_eye_contour: ["44", "45", "46", "47", "48"]
+
+  head_motion:
+    enabled: true
+    stats: [mean, rms]
+    derivatives: [velocity, acceleration]

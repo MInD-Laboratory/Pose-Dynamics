@@ -28,23 +28,57 @@ def _apply_linear_detrend(df: pd.DataFrame, dims: list[str]) -> pd.DataFrame:
     return df_out
 
 
+def _segment_filter(values: np.ndarray, b: np.ndarray, a: np.ndarray) -> np.ndarray:
+    """Apply filtfilt per contiguous finite segment, leaving short segments untouched."""
+    out = values.copy()
+    n = len(out)
+    padlen = 3 * (max(len(a), len(b)) - 1)
+
+    i = 0
+    while i < n:
+        while i < n and not np.isfinite(out[i]):
+            i += 1
+        if i >= n:
+            break
+
+        j = i
+        while j < n and np.isfinite(out[j]):
+            j += 1
+
+        seg_len = j - i
+        if seg_len > padlen:
+            try:
+                out[i:j] = filtfilt(b, a, out[i:j])
+            except ValueError:
+                # If filtfilt still fails, leave segment unfiltered.
+                pass
+        i = j
+    return out
+
+
 def _apply_filter(
-    df: pd.DataFrame, dims: list[str], btype: str, cutoff_hz: float, dt: float
+    df: pd.DataFrame,
+    dims: list[str],
+    btype: str,
+    cutoff_hz: float,
+    dt: float,
+    order: int,
 ) -> pd.DataFrame:
     df_out = df.copy()
     fs = 1.0 / dt
     if cutoff_hz <= 0 or cutoff_hz >= fs / 2:
         raise ConfigError("invalid cutoff_hz for filter.")
 
-    b, a = butter(N=4, Wn=cutoff_hz / (fs / 2), btype=btype)
+    b, a = butter(N=order, Wn=cutoff_hz / (fs / 2), btype=btype)
 
     for d in dims:
         y = df_out[d].to_numpy(dtype=float)
         mask = np.isnan(y)
-        if mask.any():
-            y = y.copy()
-            y[mask] = np.nanmean(y)
-        y_f = filtfilt(b, a, y)
+        if mask.all():
+            df_out[d] = y
+            continue
+
+        y_f = _segment_filter(y, b, a)
         y_f[mask] = np.nan
         df_out[d] = y_f
     return df_out
@@ -72,13 +106,27 @@ def apply_detrend_filter(
             if not np.isfinite(dt) or dt <= 0:
                 raise ConfigError("highpass detrend requires a valid timebase.")
             cutoff_hz = float(cfg.detrend_filter.lowpass.cutoff_hz)
-            df_trial = _apply_filter(df_trial, dims, "highpass", cutoff_hz, dt)
+            df_trial = _apply_filter(
+                df_trial,
+                dims,
+                "highpass",
+                cutoff_hz,
+                dt,
+                cfg.detrend_filter.lowpass.order,
+            )
 
         if cfg.detrend_filter.lowpass.enabled:
             if not np.isfinite(dt) or dt <= 0:
                 raise ConfigError("lowpass filter requires a valid timebase.")
             cutoff_hz = float(cfg.detrend_filter.lowpass.cutoff_hz)
-            df_trial = _apply_filter(df_trial, dims, "lowpass", cutoff_hz, dt)
+            df_trial = _apply_filter(
+                df_trial,
+                dims,
+                "lowpass",
+                cutoff_hz,
+                dt,
+                cfg.detrend_filter.lowpass.order,
+            )
 
         parts.append(df_trial)
         metadata.append(

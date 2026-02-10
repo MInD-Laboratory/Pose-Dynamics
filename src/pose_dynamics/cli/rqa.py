@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from pose_dynamics.progress import run_steps
 from pose_dynamics.rqa.api import run_rqa
 
 
@@ -30,14 +31,42 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
-    run_rqa(
-        pose_clean_path=args.pose_path,
-        windows_path=args.windows_path,
-        config=args.config_path,
-        out_dir=args.out_dir,
-        pose_y_path=args.pose_y_path,
-        overwrite=bool(args.overwrite),
-    )
+    # Load config and iterate
+    import yaml
+
+    with open(args.config_path, "r") as f:
+        conf = yaml.safe_load(f)
+
+    rqa_list = conf.get("rqa", [])
+    if not rqa_list:
+        print("No RQA configurations found in yaml.")
+        return 0
+
+    steps = []
+    for i, item in enumerate(rqa_list):
+        # We need to construct a temporary config for api.run_rqa or modify it to accept dict
+        # Modifying run_rqa to take the 'item' dict directly or adapting it here is needed.
+        # But run_rqa expects specific args.
+        # Let's adapt run_rqa in the API to handle the list iteration or do it here.
+        # Better: run_rqa runs ONE analysis. We loop here.
+
+        name = item.get("output_name", f"analysis_{i}")
+
+        steps.append(
+            (
+                f"Run RQA: {name}",
+                lambda item=item, name=name: run_rqa(
+                    pose_clean_path=args.pose_path,
+                    windows_path=args.windows_path,
+                    config_dict=item,
+                    out_dir=args.out_dir / name,
+                    pose_y_path=args.pose_y_path,
+                    overwrite=bool(args.overwrite),
+                ),
+            )
+        )
+
+    run_steps(steps, title="pose-dynamics rqa")
     return 0
 
 
