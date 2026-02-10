@@ -9,7 +9,9 @@ from pathlib import Path
 STEP_CHOICES = ["ingest", "preprocess", "features", "rqa", "analysis"]
 
 ROOT = Path(__file__).resolve().parents[2]
-DATA_DIR = ROOT / "examples" / "case_study_1_matb" / "data" / "raw_test"  # raw_pose_csv
+DATA_DIR = (
+    ROOT / "examples" / "case_study_1_matb" / "data" / "raw_pose_csv"
+)  # raw_pose_csv
 CFG_DIR = ROOT / "examples" / "case_study_1_matb" / "configs"
 PREPROCESS_CFG = CFG_DIR / "preprocess.yaml"
 FEATURE_CFG = CFG_DIR / "features.yaml"

@@ -7,8 +7,8 @@ End-to-end workflow to reproduce the MATB facial dynamics analyses (ingest → p
 - Outputs land under `artifacts/`: ingest (`artifacts/ingest/matb`), preprocess (`artifacts/preprocess/matb`), features (`artifacts/features/matb`), RQA (`artifacts/rqa/matb`).
 - RQA config: see `configs/rqa.yaml` (minmax + rescale, expanded RQA/CRQA signals).
 
-## Notebook (figs.ipynb)
-- Uses only `notebook_utils` (no old_code dependency). Stats helpers were ported here.
+## Notebook (tutorial.ipynb)
+- Requires you run the steps in main.py before running.
 - Linear stats cell runs `build_table_with_emmeans` on the wide feature table (drops degenerate metrics, safe plotting). RQA stats cell does the same on `rqa_stats.csv` outputs.
 - AMI/FNN helpers and plotting live in `notebook_utils` as well.
 
