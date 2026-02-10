@@ -8,7 +8,7 @@ End-to-end workflow to reproduce the MATB facial dynamics analyses (ingest → p
 - RQA config: see `configs/rqa.yaml` (minmax + rescale, expanded RQA/CRQA signals).
 
 ## Notebook (tutorial.ipynb)
-- Requires you run the steps in main.py before running.
+- Requires you run the steps in run.py before running.
 - Linear stats cell runs `build_table_with_emmeans` on the wide feature table (drops degenerate metrics, safe plotting). RQA stats cell does the same on `rqa_stats.csv` outputs.
 - AMI/FNN helpers and plotting live in `notebook_utils` as well.
 
