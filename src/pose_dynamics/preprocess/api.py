@@ -468,6 +468,10 @@ class StreamingPreprocessRunner:
             self.trials_with_rows.add(trial_id)
 
     def _write_windows(self, df: pd.DataFrame) -> None:
+        # Ensure stable Arrow schema even when the first batch has all-null drop_reason
+        if "drop_reason" in df.columns:
+            df = df.copy()
+            df["drop_reason"] = df["drop_reason"].astype("string")
         table = pa.Table.from_pandas(df, preserve_index=False)
         if self.windows_writer is None:
             self.windows_writer = pq.ParquetWriter(
