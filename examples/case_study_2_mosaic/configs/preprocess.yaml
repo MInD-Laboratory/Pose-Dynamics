@@ -1,0 +1,132 @@
+pipeline_version: mosaic
+
+selection:
+  keypoints:
+    # Centre-face: body model (0=Nose, 15=REye, 16=LEye)
+    - "Nose"
+    - "REye"
+    - "LEye"
+    # Centre-face: face model (7=rightChin, 9=leftChin)
+    - "rightChin"
+    - "leftChin"
+    # 17-21: right eyebrow
+    - "rightOuterEyeBrow"
+    - "rightOuter1EyeBrow"
+    - "rightPeakEyeBrow"
+    - "rightInner1EyeBrow"
+    - "rightInnerEyeBrow"
+    # 22-26: left eyebrow
+    - "leftInnerEyeBrow"
+    - "leftInner1EyeBrow"
+    - "leftPeakEyeBrow"
+    - "leftOuter1EyeBrow"
+    - "leftOuterEyeBrow"
+    # 31-35: nostrils
+    - "leftNostril"
+    - "leftInNostril"
+    - "centerNostril"
+    - "rightInNostril"
+    - "rightNostril"
+    # 36-41: right eye
+    - "rightEdgeEyeLeft"
+    - "rightTopEyeInner"
+    - "rightTopEyeOuter"
+    - "rightEdgeEyeRight"
+    - "rightLowerEyeRight"
+    - "rightLowerEyeLeft"
+    # 42-47: left eye
+    - "leftEdgeEyeLeft"
+    - "leftTopEyeOuter"
+    - "leftTopEyeInner"
+    - "leftEdgeEyeRight"
+    - "leftLowerEyeRight"
+    - "leftLowerEyeLeft"
+    # 48-59: outer lip
+    - "rightOuterLip"
+    - "rightUpperLip"
+    - "rightTopLip"
+    - "topCenterLip"
+    - "leftTopLip"
+    - "leftUpperLip"
+    - "leftOuterLip"
+    - "leftLowerLip"
+    - "leftBottomLip"
+    - "bottomCenterLip"
+    - "rightBottomLip"
+    - "rightLowerLip"
+    # 60-67: inner lip
+    - "rightInnerLip"
+    - "rightInnerTopLip"
+    - "innerTopCenterLip"
+    - "leftInnerTopLip"
+    - "leftInnerLip"
+    - "leftInnerBottomLip"
+    - "innerBottomCenterLip"
+    - "rightInnerBottomLip"
+    # 68-69: pupils
+    - "rightPupil"
+    - "leftPupil"
+    # Upper body: body model
+    - "Neck"
+    - "RShoulder"
+    - "LShoulder"
+    - "MidHip"
+    # Arms: body model
+    - "RElbow"
+    - "RWrist"
+    - "LElbow"
+    - "LWrist"
+  dims: xy
+
+timebase:
+  enforce_time: true
+  resample:
+    enabled: true
+    target_hz: 30          # was target_fps — schema uses target_hz
+
+confidence:
+  enabled: true
+  conf_min: 0.30
+
+missing:
+  interpolation:
+    enabled: true
+    limit:
+      type: frames
+      max_gap_frames: 60   # 1 s at 60 Hz (applied before downsampling)
+
+windowing:
+  enabled: true
+  units: seconds
+  length_s: 60             # 60-s windows
+  step_s: 30               # 50% overlap
+  include_partial: false
+
+alignment:
+  enabled: true
+  template_scope: global
+  transform: similarity
+  framewise: false          # MOSAIC uses per-window (not per-frame) alignment
+  keypoints: all            # all selected keypoints used for the fit
+  reflection: false
+  min_kps_for_fit: 4
+  min_valid_frac_per_kp: 0.20
+
+normalization:
+  enabled: false
+
+detrend_filter:
+  detrend: none
+  lowpass:
+    enabled: true
+    cutoff_hz: 10
+    order: 4
+
+spatial:
+  centering:
+    method: anchor_keypoint   # was "anchor" — schema expects "anchor_keypoint"
+    anchor_keypoint: "Nose"
+  scale:
+    method: screen
+    width_px: 1920
+    height_px: 1080

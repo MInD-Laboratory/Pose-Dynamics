@@ -1,0 +1,37 @@
+rqa:
+
+  - analysis_type: "crqa"
+    keypoint_x: ["centre_face_vel_mag"]
+    keypoint_y: ["centre_face_vel_mag"]
+    embedding: { dim: 4, tau: 10 }
+    norm: "zscore"
+    rescale_norm: true
+    radius_mode: "absolute"
+    radius: 0.2
+    line_min: 2
+    theiler: 0
+    output_name: "crqa_centre_face"
+
+  - analysis_type: "crqa"
+    keypoint_x: ["upper_body_vel_mag"]
+    keypoint_y: ["upper_body_vel_mag"]
+    embedding: { dim: 4, tau: 10 }
+    norm: "zscore"
+    rescale_norm: true
+    radius_mode: "absolute"
+    radius: 0.2
+    line_min: 2
+    theiler: 0
+    output_name: "crqa_upper_body"
+
+  - analysis_type: "crqa"
+    keypoint_x: ["arms_vel_mag"]
+    keypoint_y: ["arms_vel_mag"]
+    embedding: { dim: 4, tau: 10 }
+    norm: "zscore"
+    rescale_norm: true
+    radius_mode: "absolute"
+    radius: 0.2
+    line_min: 2
+    theiler: 0
+    output_name: "crqa_arms"
