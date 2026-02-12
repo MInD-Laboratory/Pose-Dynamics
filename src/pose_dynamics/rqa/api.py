@@ -8,8 +8,10 @@ import numpy as np
 import pandas as pd
 
 from pose_dynamics.rqa.rqa_config import ConfigError, RQAConfig
-from pose_dynamics.rqa.utils import norm_utils, rqa_utils_cpp
-
+try:
+    from pose_dynamics.rqa.utils import norm_utils, rqa_utils_cpp
+except ImportError:
+    rqa_utils_cpp = None
 
 @dataclass(frozen=True)
 class RQAOutputs:

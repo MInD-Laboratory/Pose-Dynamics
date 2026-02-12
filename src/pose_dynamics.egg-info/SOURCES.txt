@@ -23,6 +23,7 @@ src/pose_dynamics/features/facial.py
 src/pose_dynamics/features/geometry.py
 src/pose_dynamics/features/head_motion.py
 src/pose_dynamics/features/kinematics.py
+src/pose_dynamics/features/roi.py
 src/pose_dynamics/features/schema.py
 src/pose_dynamics/features/stats.py
 src/pose_dynamics/io/csv_pose.py
@@ -46,6 +47,8 @@ src/pose_dynamics/preprocess/alignment/__init__.py
 src/pose_dynamics/preprocess/alignment/procrustes.py
 src/pose_dynamics/rqa/__init__.py
 src/pose_dynamics/rqa/api.py
+src/pose_dynamics/rqa/autoRQA.py
+src/pose_dynamics/rqa/crossRQA.py
 src/pose_dynamics/rqa/params.py
 src/pose_dynamics/rqa/rqa_config.py
 src/pose_dynamics/rqa/schema.py

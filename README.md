@@ -22,7 +22,7 @@ git clone https://github.com/cartersale/Pose-Dynamics.git # Clone the repo
 cd pose-dynamics
 python -m venv .venv # Create virtual environment
 source .venv/bin/activate 
-pip install -e . # Install the package 
+pip install -e . # Install the pose_dynamics module 
 pytest tests/test_imports.py # Verify the installation worked
 ```
 

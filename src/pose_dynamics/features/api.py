@@ -12,6 +12,7 @@ from pose_dynamics.features.facial import facial_feature_series
 from pose_dynamics.features.geometry import pairwise_distance_features
 from pose_dynamics.features.head_motion import head_motion_series
 from pose_dynamics.features.kinematics import kinematics_features
+from pose_dynamics.features.roi import roi_feature_series
 from pose_dynamics.features.schema import ConfigError, FeaturesConfig
 from pose_dynamics.features.stats import derivative_series, summary_stats
 
@@ -272,6 +273,29 @@ def run_feature_extract(
                     derivatives=cfg.head_motion.derivatives,
                     dt=dt_trans,
                 )
+
+            if cfg.roi.enabled:
+                for region in cfg.roi.regions:
+                    series_map = roi_feature_series(
+                        df_win,
+                        time_col,
+                        region.name,
+                        region.keypoints,
+                        cfg.roi.derivatives,
+                        dt_pose,
+                    )
+                    for base, series in series_map.items():
+                        _append_feature_stats(
+                            features_rows,
+                            trial_id=trial_id,
+                            window_id=w["window_id"],
+                            keypoint=region.name,  # Use ROI name as keypoint identifier
+                            base_name=base,
+                            series=series,
+                            stats=cfg.roi.stats,
+                            derivatives=[],  # Already computed in roi_feature_series
+                            dt=dt_pose,
+                        )
 
     features_df = pd.DataFrame(features_rows)
 

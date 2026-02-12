@@ -1,5 +1,3 @@
-pipeline_version: mosaic
-
 selection:
   keypoints:
     # Centre-face: body model (0=Nose, 15=REye, 16=LEye)

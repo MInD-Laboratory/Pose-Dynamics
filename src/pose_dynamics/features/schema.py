@@ -300,6 +300,70 @@ class HeadMotionConfig:
             derivatives=derivatives,
         )
 
+@dataclass(frozen=True)
+class ROIRegion:
+    """Configuration for a single Region of Interest."""
+    name: str
+    keypoints: List[str] = field(default_factory=list)
+
+    @staticmethod
+    def from_dict(x: Any, ctx: str = "roi.region") -> "ROIRegion":
+        d = _expect_dict(x, ctx)
+        _reject_unknown_keys(d, ["name", "keypoints"], ctx)
+        name = _get(d, "name")
+        if not isinstance(name, str):
+            raise ConfigError(f"{ctx}.name must be a string.")
+        keypoints = _get(d, "keypoints", [])
+        if not (isinstance(keypoints, list) and all(isinstance(k, str) for k in keypoints)):
+            raise ConfigError(f"{ctx}.keypoints must be list[str].")
+        return ROIRegion(name=name, keypoints=keypoints)
+
+
+@dataclass(frozen=True)
+class ROIConfig:
+    """Configuration for ROI (Region of Interest) feature extraction."""
+    enabled: bool = False
+    derivatives: List[Literal["velocity", "acceleration"]] = field(
+        default_factory=lambda: ["velocity"]
+    )
+    stats: List[str] = field(
+        default_factory=lambda: ["mean", "rms"]
+    )
+    regions: List[ROIRegion] = field(default_factory=list)
+
+    @staticmethod
+    def from_dict(x: Any, ctx: str = "roi") -> "ROIConfig":
+        d = _expect_dict(x, ctx)
+        _reject_unknown_keys(d, ["enabled", "derivatives", "stats", "regions"], ctx)
+        
+        derivatives = _get(d, "derivatives", ["velocity"])
+        if not (
+            isinstance(derivatives, list)
+            and all(dv in ("velocity", "acceleration") for dv in derivatives)
+        ):
+            raise ConfigError(
+                f"{ctx}.derivatives must be list of ['velocity','acceleration']."
+            )
+        
+        stats = _get(d, "stats", ["mean", "rms"])
+        if not (isinstance(stats, list) and all(isinstance(s, str) for s in stats)):
+            raise ConfigError(f"{ctx}.stats must be list[str].")
+        
+        regions_raw = _get(d, "regions", [])
+        if not isinstance(regions_raw, list):
+            raise ConfigError(f"{ctx}.regions must be a list.")
+        
+        regions = [
+            ROIRegion.from_dict(r, ctx=f"{ctx}.regions[{i}]")
+            for i, r in enumerate(regions_raw)
+        ]
+        
+        return ROIConfig(
+            enabled=bool(_get(d, "enabled", False)),
+            derivatives=derivatives,
+            stats=stats,
+            regions=regions,
+        )
 
 @dataclass(frozen=True)
 class FeaturesConfig:
@@ -308,13 +372,14 @@ class FeaturesConfig:
     geometry: GeometryConfig = field(default_factory=GeometryConfig)
     facial: FacialConfig = field(default_factory=FacialConfig)
     head_motion: HeadMotionConfig = field(default_factory=HeadMotionConfig)
+    roi: ROIConfig = field(default_factory=ROIConfig)  # NEW
 
     @staticmethod
     def from_dict(x: Any, ctx: str = "features") -> "FeaturesConfig":
         d = _expect_dict(x, ctx)
         _reject_unknown_keys(
             d,
-            ["keypoints", "kinematics", "geometry", "facial", "head_motion"],
+            ["keypoints", "kinematics", "geometry", "facial", "head_motion", "roi"],  # Added "roi"
             ctx,
         )
         keypoints = _get(d, "keypoints", "all")
@@ -334,6 +399,7 @@ class FeaturesConfig:
             head_motion=HeadMotionConfig.from_dict(
                 _get(d, "head_motion", {}), ctx=f"{ctx}.head_motion"
             ),
+            roi=ROIConfig.from_dict(_get(d, "roi", {}), ctx=f"{ctx}.roi"),  # NEW
         )
 
     @staticmethod
