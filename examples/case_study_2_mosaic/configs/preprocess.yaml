@@ -104,7 +104,7 @@ alignment:
   enabled: true
   template_scope: global
   transform: similarity
-  framewise: false          # MOSAIC uses per-window (not per-frame) alignment
+  framewise: true          # MOSAIC uses per-window (not per-frame) alignment
   keypoints: all            # all selected keypoints used for the fit
   reflection: false
   min_kps_for_fit: 4
