@@ -50,7 +50,12 @@ def _xy_for_ref(
         ys.append(xy[1])
     if not xs or not ys:
         return None
-    return np.nanmean(np.vstack(xs), axis=0), np.nanmean(np.vstack(ys), axis=0)
+    x_stack = np.vstack(xs)
+    y_stack = np.vstack(ys)
+    # avoid nanmean warnings when everything is NaN
+    if not np.isfinite(x_stack).any() or not np.isfinite(y_stack).any():
+        return None
+    return np.nanmean(x_stack, axis=0), np.nanmean(y_stack, axis=0)
 
 
 def _dist(x1: np.ndarray, y1: np.ndarray, x2: np.ndarray, y2: np.ndarray) -> np.ndarray:
@@ -220,6 +225,9 @@ def facial_feature_series(
         if xs and ys:
             x_mat = np.vstack(xs)
             y_mat = np.vstack(ys)
+            # Skip all-NaN slices to avoid runtime warnings
+            if (not np.isfinite(x_mat).any()) or (not np.isfinite(y_mat).any()):
+                return out
             mean_x = np.nanmean(x_mat, axis=1, keepdims=True)
             mean_y = np.nanmean(y_mat, axis=1, keepdims=True)
             dx = x_mat - mean_x
