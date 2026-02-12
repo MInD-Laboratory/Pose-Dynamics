@@ -10,7 +10,6 @@ import argparse
 from pathlib import Path
 
 from pose_dynamics.features.api import run_feature_extract
-from pose_dynamics.progress import run_steps
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -65,21 +64,15 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
-    run_steps(
-        [
-            (
-                "Extract features",
-                lambda: run_feature_extract(
-                    pose_clean_path=args.pose_path,
-                    windows_path=args.windows_path,
-                    config=args.config_path,
-                    out_dir=args.out_dir,
-                    alignment_transforms_path=args.alignment_transforms_path,
-                    overwrite=bool(args.overwrite),
-                ),
-            )
-        ],
-        title="pose-dynamics feature-extract",
+    # Direct call to avoid nested rich live displays (run_feature_extract
+    # already manages its own progress bar).
+    run_feature_extract(
+        pose_clean_path=args.pose_path,
+        windows_path=args.windows_path,
+        config=args.config_path,
+        out_dir=args.out_dir,
+        alignment_transforms_path=args.alignment_transforms_path,
+        overwrite=bool(args.overwrite),
     )
     return 0
 
