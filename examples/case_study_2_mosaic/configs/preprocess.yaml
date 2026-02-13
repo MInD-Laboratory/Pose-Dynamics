@@ -99,9 +99,9 @@ preprocess:
 
   windowing:
     enabled: true
-    units: seconds
-    length_s: 60             # 60-s windows
-    step_s: 30               # 50% overlap
+    units: frames
+    length_frames: 1800
+    step_frames: 900
     include_partial: false
 
   alignment:

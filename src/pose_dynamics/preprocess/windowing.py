@@ -119,7 +119,10 @@ def build_windows(
             else:
                 mask = (df_trial[time_col] >= s) & (df_trial[time_col] < e)
 
-            n_samples = int(pd.unique(df_trial.loc[mask, time_col]).size)
+            if cfg.windowing.include_partial:
+                n_samples = int(pd.unique(df_trial.loc[mask, time_col]).size)
+            else:
+                n_samples = int(length)
 
             windows.append(
                 {

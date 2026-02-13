@@ -303,28 +303,28 @@ def run_feature_extract(
                 label = f"{trial_id} | window {w['window_id']} ({processed}/{total_windows})"
                 update_progress(label, advance=1)
 
-            if cfg.roi.enabled:
-                for region in cfg.roi.regions:
-                    series_map = roi_feature_series(
-                        df_win,
-                        time_col,
-                        region.name,
-                        region.keypoints,
-                        cfg.roi.derivatives,
-                        dt_pose,
-                    )
-                    for base, series in series_map.items():
-                        _append_feature_stats(
-                            features_rows,
-                            trial_id=trial_id,
-                            window_id=w["window_id"],
-                            keypoint=region.name,  # Use ROI name as keypoint identifier
-                            base_name=base,
-                            series=series,
-                            stats=cfg.roi.stats,
-                            derivatives=[],  # Already computed in roi_feature_series
-                            dt=dt_pose,
+                if cfg.roi.enabled:
+                    for region in cfg.roi.regions:
+                        series_map = roi_feature_series(
+                            df_win,
+                            time_col,
+                            region.name,
+                            region.keypoints,
+                            cfg.roi.derivatives,
+                            dt_pose,
                         )
+                        for base, series in series_map.items():
+                            _append_feature_stats(
+                                features_rows,
+                                trial_id=trial_id,
+                                window_id=w["window_id"],
+                                keypoint=region.name,  # Use ROI name as keypoint identifier
+                                base_name=base,
+                                series=series,
+                                stats=cfg.roi.stats,
+                                derivatives=[],  # Already computed in roi_feature_series
+                                dt=dt_pose,
+                            )
 
     features_df = pd.DataFrame(features_rows)
 
