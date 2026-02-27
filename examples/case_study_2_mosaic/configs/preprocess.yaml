@@ -109,7 +109,9 @@ preprocess:
     template_scope: global
     transform: similarity
     keypoints: all            # all selected keypoints used for the fit
-    framewise: true          # MOSAIC uses per-window (not per-frame) alignment
+    scope: window            # per-window alignment preserves within-window dynamics
+    center_keypoint: Nose    # center on nose position before Procrustes
+    framewise: false         # deprecated - use scope instead
     reflection: false
     min_kps_for_fit: 4
     min_valid_frac_per_kp: 0.20

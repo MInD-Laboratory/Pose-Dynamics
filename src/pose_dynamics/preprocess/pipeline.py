@@ -5,7 +5,10 @@ from typing import Tuple
 import numpy as np
 import pandas as pd
 
-from pose_dynamics.preprocess.alignment.procrustes import align_procrustes
+from pose_dynamics.preprocess.alignment.procrustes import (
+    align_procrustes,
+    align_procrustes_windowed,
+)
 from pose_dynamics.preprocess.confidence import apply_confidence_mask
 from pose_dynamics.preprocess.filtering import apply_detrend_filter
 from pose_dynamics.preprocess.missing import interpolate_missing
@@ -97,7 +100,15 @@ def run_pipeline(
     df_clean = interpolate_missing(df_clean, cfg)
     df_clean = apply_spatial(df_clean, cfg)
     df_clean = _add_interocular_screen(df_clean)
-    df_clean, transforms, transforms_df = align_procrustes(df_clean, cfg)
+    
+    # Determine alignment scope
+    alignment_scope = cfg.alignment.scope if cfg.alignment.enabled else None
+    
+    # For non-window alignment, apply before windowing (original behavior)
+    transforms = []
+    transforms_df = None
+    if alignment_scope in ("frame", "trial"):
+        df_clean, transforms, transforms_df = align_procrustes(df_clean, cfg)
 
     windows = pd.DataFrame()
     if cfg.normalization.enabled and cfg.normalization.scope == "windowed":
@@ -120,6 +131,12 @@ def run_pipeline(
     if windows.empty:
         windows = build_windows(df_for_windowing, cfg, recording)
     windows_scored = score_windows_missingness(df_for_windowing, windows, cfg)
+    
+    # For window-based alignment, apply after windowing
+    if alignment_scope == "window":
+        df_clean, transforms, transforms_df = align_procrustes_windowed(
+            df_clean, windows_scored, cfg
+        )
 
     qc = {
         "n_windows": int(len(windows_scored)),

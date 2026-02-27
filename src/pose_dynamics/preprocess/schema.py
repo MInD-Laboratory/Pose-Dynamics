@@ -404,7 +404,13 @@ class AlignmentConfig:
     enabled: bool = False
     method: Literal["procrustes"] = "procrustes"
 
+    # Alignment scope: 'frame' (per-frame), 'window' (per-window), or 'trial' (per-trial)
+    scope: Literal["frame", "window", "trial"] = "trial"
+    # Deprecated: use scope='frame' instead
     framewise: bool = False
+
+    # Pre-centering: center coordinates on this keypoint before alignment
+    center_keypoint: Optional[str] = None
 
     template_scope: Literal["trial", "global"] = "global"
     transform: Literal["rigid", "similarity"] = "similarity"
@@ -426,7 +432,9 @@ class AlignmentConfig:
             [
                 "enabled",
                 "method",
+                "scope",
                 "framewise",
+                "center_keypoint",
                 "template_scope",
                 "transform",
                 "rotation",
@@ -447,10 +455,20 @@ class AlignmentConfig:
         ):
             raise ConfigError(f"{ctx}.keypoints must be 'all' or a list[str].")
 
+        # Handle backward compatibility: framewise=true -> scope='frame'
+        framewise = bool(_get(d, "framewise", False))
+        scope = _get(d, "scope", None)
+        if scope is None:
+            scope = "frame" if framewise else "trial"
+        elif scope not in ("frame", "window", "trial"):
+            raise ConfigError(f"{ctx}.scope must be 'frame', 'window', or 'trial'.")
+
         return AlignmentConfig(
             enabled=bool(_get(d, "enabled", False)),
             method=_get(d, "method", "procrustes"),
-            framewise=bool(_get(d, "framewise", False)),
+            scope=scope,
+            framewise=framewise,
+            center_keypoint=_get(d, "center_keypoint", None),
             template_scope=_get(d, "template_scope", "global"),
             transform=_get(d, "transform", "similarity"),
             rotation=_get(d, "rotation", None),

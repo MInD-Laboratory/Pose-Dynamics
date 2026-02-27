@@ -293,7 +293,10 @@ class StreamingPreprocessRunner:
             scaling=scaling,
             translation=translation,
             reflection=self.cfg.alignment.reflection,
-            framewise=bool(self.cfg.alignment.framewise),
+            # Use scope to determine framewise behavior:
+            # 'frame' -> per-frame alignment (slow but precise)
+            # 'window' or 'trial' -> trial-level alignment (fast)
+            framewise=bool(self.cfg.alignment.scope == "frame"),
         )
 
     def _apply_alignment(
@@ -608,7 +611,8 @@ def run_preprocess(
         alignment_transforms_path.write_text(
             json.dumps(summary["transforms_meta"], indent=2), encoding="utf-8"
         )
-        if cfg.alignment.framewise and summary["transforms_rows_written"] > 0:
+        # Per-frame transforms table is written only for frame-level alignment
+        if cfg.alignment.scope == "frame" and summary["transforms_rows_written"] > 0:
             align_table_path = alignment_transforms_table_path
         else:
             align_table_path = None

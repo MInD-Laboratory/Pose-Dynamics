@@ -345,3 +345,258 @@ def align_procrustes(
 
     df_out = pd.concat(aligned_parts, ignore_index=True)
     return df_out, transforms, transforms_df
+
+
+def _center_on_keypoint(
+    df: pd.DataFrame,
+    center_keypoint: str,
+    dims: List[str],
+    group_cols: List[str],
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """Center coordinates on the mean position of a specific keypoint within groups.
+    
+    Args:
+        df: Pose dataframe with keypoint, x, y, etc.
+        center_keypoint: Keypoint to center on (e.g., 'Nose')
+        dims: Coordinate dimensions ['x', 'y'] or ['x', 'y', 'z']
+        group_cols: Columns to group by (e.g., ['trial_id', 'window_id'])
+        
+    Returns:
+        df_centered: Dataframe with centered coordinates
+        offsets_df: Dataframe with offset values per group
+    """
+    # Get the center keypoint data
+    center_df = df[df["keypoint"] == center_keypoint].copy()
+    if center_df.empty:
+        return df, pd.DataFrame()
+    
+    # Compute mean position of center keypoint per group
+    offsets = center_df.groupby(group_cols, as_index=False)[dims].mean()
+    offsets = offsets.rename(columns={d: f"{d}_offset" for d in dims})
+    
+    # Merge offsets back to full dataframe
+    df_out = df.merge(offsets, on=group_cols, how="left")
+    
+    # Subtract offsets to center
+    for d in dims:
+        df_out[d] = df_out[d] - df_out[f"{d}_offset"]
+        df_out = df_out.drop(columns=[f"{d}_offset"])
+    
+    return df_out, offsets
+
+
+def _compute_window_mean_pose(
+    df_window: pd.DataFrame,
+    keypoints: List[str],
+    dims: List[str],
+    min_valid_frac: float,
+    min_kps: int,
+) -> Tuple[np.ndarray, List[str]]:
+    """Compute mean pose for a window (average position across all frames)."""
+    means = []
+    used = []
+    
+    for kp in keypoints:
+        kp_data = df_window[df_window["keypoint"] == kp]
+        if kp_data.empty:
+            continue
+        vals = kp_data[dims]
+        valid = vals.notna().all(axis=1)
+        valid_frac = float(valid.mean()) if len(valid) else 0.0
+        if valid_frac < min_valid_frac:
+            continue
+        means.append(vals.mean(skipna=True).to_numpy(dtype=float))
+        used.append(kp)
+    
+    if len(used) < min_kps:
+        return np.empty((0, len(dims))), []
+    
+    return np.vstack(means), used
+
+
+def align_procrustes_windowed(
+    df: pd.DataFrame,
+    windows: pd.DataFrame,
+    cfg: PreprocessConfig,
+) -> Tuple[pd.DataFrame, List[dict], pd.DataFrame]:
+    """
+    Window-based Procrustes alignment.
+    
+    For each window:
+    1. Center coordinates on mean position of center_keypoint (if specified)
+    2. Compute mean pose of the window
+    3. Fit Procrustes transform to align window mean pose to global template
+    4. Apply the same transform to ALL frames in the window
+    
+    This preserves within-window movement dynamics while correcting for
+    gross positional bias and inter-window differences.
+    """
+    if not cfg.alignment.enabled:
+        return df, [], pd.DataFrame()
+    if cfg.alignment.method != "procrustes":
+        raise ConfigError("alignment.method currently supports only 'procrustes'.")
+
+    dims = ["x", "y"] + (["z"] if "z" in df.columns else [])
+    keypoints = _valid_keypoints_for_alignment(df, cfg)
+    rotation, scaling, translation = _resolve_alignment_flags(cfg)
+    time_col = _time_col(df)
+
+    # Step 1: Center on keypoint if specified
+    center_kp = cfg.alignment.center_keypoint
+    if center_kp:
+        if center_kp not in df["keypoint"].unique():
+            raise ConfigError(
+                f"alignment.center_keypoint '{center_kp}' not found in data."
+            )
+        # We need window_id in df to center per-window
+        # Merge window info to df
+        df = _assign_frames_to_windows(df, windows, time_col)
+        df, offsets_df = _center_on_keypoint(
+            df, center_kp, dims, ["trial_id", "window_id"]
+        )
+    else:
+        df = _assign_frames_to_windows(df, windows, time_col)
+
+    # Step 2: Compute global template (mean pose across all windows)
+    window_means: Dict[Tuple[str, str], np.ndarray] = {}
+    window_used: Dict[Tuple[str, str], List[str]] = {}
+    
+    for (trial_id, window_id), df_win in df.groupby(["trial_id", "window_id"], sort=False):
+        mean_pose, used = _compute_window_mean_pose(
+            df_win, keypoints, dims,
+            cfg.alignment.min_valid_frac_per_kp,
+            cfg.alignment.min_kps_for_fit,
+        )
+        if len(used) >= cfg.alignment.min_kps_for_fit:
+            window_means[(trial_id, window_id)] = mean_pose
+            window_used[(trial_id, window_id)] = used
+
+    if not window_means:
+        raise ConfigError("No windows have enough valid keypoints for alignment.")
+
+    # Find intersection of keypoints across all windows
+    kp_sets = [set(kps) for kps in window_used.values()]
+    kp_intersection = sorted(set.intersection(*kp_sets))
+    if len(kp_intersection) < cfg.alignment.min_kps_for_fit:
+        raise ConfigError(
+            f"Not enough shared keypoints across windows for alignment "
+            f"(have {len(kp_intersection)}, need {cfg.alignment.min_kps_for_fit})."
+        )
+
+    # Build global template as mean over all windows
+    template_rows = []
+    for (trial_id, window_id), mean_pose in window_means.items():
+        used = window_used[(trial_id, window_id)]
+        idx = [used.index(kp) for kp in kp_intersection]
+        template_rows.append(mean_pose[idx, :])
+    template = np.mean(np.stack(template_rows, axis=0), axis=0)
+
+    # Step 3 & 4: Fit and apply transform per window
+    aligned_parts = []
+    transform_rows: List[dict] = []
+
+    for (trial_id, window_id), df_win in df.groupby(["trial_id", "window_id"], sort=False):
+        key = (trial_id, window_id)
+        
+        if key not in window_means:
+            # Not enough keypoints - set coordinates to NaN
+            df_win = df_win.copy()
+            for d in dims:
+                df_win[d] = np.nan
+            aligned_parts.append(df_win)
+            transform_rows.append({
+                "trial_id": trial_id,
+                "window_id": window_id,
+                "scale": float("nan"),
+                "rotation_angle": float("nan"),
+                **{f"translation_{d}": float("nan") for d in dims},
+                "keypoints_used": [],
+            })
+            continue
+
+        # Get window mean pose for shared keypoints
+        mean_pose = window_means[key]
+        used = window_used[key]
+        idx = [used.index(kp) for kp in kp_intersection]
+        X = mean_pose[idx, :]
+        Y = template
+
+        # Fit Procrustes
+        R, s, t = _procrustes_transform(
+            X, Y,
+            allow_reflection=cfg.alignment.reflection,
+            rotation=rotation,
+            scaling=scaling,
+            translation=translation,
+        )
+
+        # Apply transform to all frames in window
+        df_aligned = _apply_transform(df_win, dims, R, s, t)
+        aligned_parts.append(df_aligned)
+
+        transform_rows.append({
+            "trial_id": trial_id,
+            "window_id": window_id,
+            "scale": float(s),
+            "rotation_angle": _rotation_angle_2d(R),
+            **{f"translation_{d}": float(t[i]) for i, d in enumerate(dims)},
+            "keypoints_used": kp_intersection,
+        })
+
+    transforms_df = pd.DataFrame(transform_rows)
+    
+    # Summary transforms (one per trial for compatibility)
+    transforms = []
+    for trial_id in df["trial_id"].unique():
+        transforms.append({
+            "trial_id": trial_id,
+            "dims": dims,
+            "keypoints_used": kp_intersection,
+            "rotation": rotation,
+            "scaling": scaling,
+            "translate": translation,
+            "reflection": cfg.alignment.reflection,
+            "transform": cfg.alignment.transform,
+            "template_scope": "global",
+            "scope": "window",
+            "center_keypoint": center_kp,
+        })
+
+    df_out = pd.concat(aligned_parts, ignore_index=True)
+    
+    # Remove temporary window_id column if it was added
+    if "window_id" in df_out.columns and "window_id" not in df.columns:
+        df_out = df_out.drop(columns=["window_id"])
+    
+    return df_out, transforms, transforms_df
+
+
+def _assign_frames_to_windows(
+    df: pd.DataFrame,
+    windows: pd.DataFrame,
+    time_col: str,
+) -> pd.DataFrame:
+    """Assign each frame to its corresponding window based on time/frame."""
+    if "window_id" in df.columns:
+        return df
+    
+    df = df.copy()
+    df["window_id"] = None
+    
+    for _, win in windows.iterrows():
+        trial_id = win["trial_id"]
+        window_id = win["window_id"]
+        start = win["start"]
+        end = win["end"]
+        
+        mask = (
+            (df["trial_id"] == trial_id) &
+            (df[time_col] >= start) &
+            (df[time_col] < end)
+        )
+        df.loc[mask, "window_id"] = window_id
+    
+    # Drop frames not in any window
+    df = df[df["window_id"].notna()]
+    
+    return df

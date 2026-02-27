@@ -31,7 +31,7 @@ PREPROCESS_OUTPUTS = [
     PRE_OUT / "qc_preprocess.json",
     PRE_OUT / "provenance.json",
     PRE_OUT / "alignment_transforms.json",
-    PRE_OUT / "alignment_transforms.parquet",
+    # Note: alignment_transforms.parquet only exists for scope='frame' alignment
 ]
 
 FEATURE_OUTPUTS = [
@@ -124,20 +124,25 @@ def run_features(force: bool = False) -> None:
         print("[skip] features (artifacts already exist)")
         return
     FEAT_OUT.mkdir(parents=True, exist_ok=True)
+    
+    # Build command - alignment_transforms.parquet is optional (only exists for scope='frame')
     cmd = _pd_cmd(
         "feature-extract",
         "--pose",
         str(PRE_OUT / "pose_clean.parquet"),
         "--windows",
         str(PRE_OUT / "windows.parquet"),
-        "--alignment-transforms",
-        str(PRE_OUT / "alignment_transforms.parquet"),
         "--config",
         str(FEATURE_CFG),
         "--out",
         str(FEAT_OUT),
         "--overwrite",
     )
+    # Add alignment transforms parquet if it exists
+    align_parquet = PRE_OUT / "alignment_transforms.parquet"
+    if align_parquet.exists():
+        cmd.extend(["--alignment-transforms", str(align_parquet)])
+    
     _run(cmd)
 
 
