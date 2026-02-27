@@ -12,7 +12,7 @@ from pose_dynamics.features.facial import facial_feature_series
 from pose_dynamics.features.geometry import pairwise_distance_features
 from pose_dynamics.features.head_motion import head_motion_series
 from pose_dynamics.features.kinematics import kinematics_features
-from pose_dynamics.features.roi import roi_feature_series
+from pose_dynamics.features.roi import compute_roi_timeseries_for_trial, roi_feature_series
 from pose_dynamics.features.schema import ConfigError, FeaturesConfig
 from pose_dynamics.features.stats import derivative_series, summary_stats
 from pose_dynamics.progress import stage_progress_with_total
@@ -88,6 +88,7 @@ class FeatureOutputs:
     features_path: Path
     qc_path: Path
     provenance_path: Path
+    roi_series_path: Path | None = None  # Raw ROI time series for RQA
 
 
 def run_feature_extract(
@@ -328,6 +329,46 @@ def run_feature_extract(
 
     features_df = pd.DataFrame(features_rows)
 
+    # Compute and save raw ROI time series for RQA/CRQA (if ROI is enabled)
+    roi_series_path = None
+    if cfg.roi.enabled and cfg.roi.regions:
+        roi_series_list = []
+        all_trial_ids = df["trial_id"].unique()
+        
+        for trial_id in all_trial_ids:
+            df_trial = df[df["trial_id"] == trial_id]
+            if df_trial.empty:
+                continue
+            
+            # Convert regions to list of dicts for the function
+            regions_dicts = [
+                {"name": r.name, "keypoints": r.keypoints}
+                for r in cfg.roi.regions
+            ]
+            
+            roi_df = compute_roi_timeseries_for_trial(
+                df_trial,
+                time_col,
+                regions_dicts,
+                derivatives=cfg.roi.derivatives,
+            )
+            
+            if not roi_df.empty:
+                roi_df["trial_id"] = trial_id
+                roi_series_list.append(roi_df)
+        
+        if roi_series_list:
+            roi_series_df = pd.concat(roi_series_list, ignore_index=True)
+            roi_series_path = out_dir / "roi_series.parquet"
+            roi_series_csv_path = out_dir / "roi_series.csv"
+            
+            if not overwrite:
+                if roi_series_path.exists():
+                    raise FileExistsError(f"Output already exists: {roi_series_path}")
+            
+            roi_series_df.to_parquet(roi_series_path, index=False)
+            roi_series_df.to_csv(roi_series_csv_path, index=False)
+
     features_path = out_dir / "features.parquet"
     features_csv_path = out_dir / "features.csv"
     qc_path = out_dir / "qc_features.json"
@@ -358,5 +399,8 @@ def run_feature_extract(
     )
 
     return FeatureOutputs(
-        features_path=features_path, qc_path=qc_path, provenance_path=provenance_path
+        features_path=features_path,
+        qc_path=qc_path,
+        provenance_path=provenance_path,
+        roi_series_path=roi_series_path,
     )

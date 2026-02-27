@@ -5,6 +5,9 @@ __pycache__/
 .pytest_cache/
 **/.DS_Store
 *.egg-info/
+build/
+*.pyd
+*.so
 examples/case_study_1_matb/data/
 examples/case_study_1_matb/stats_output/
 examples/case_study_2_mosaic/data/

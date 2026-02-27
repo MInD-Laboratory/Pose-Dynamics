@@ -152,3 +152,99 @@ def roi_feature_series(
                 out[f"{roi_name}_acc_y"] = ay
     
     return out
+
+
+def compute_roi_timeseries_for_trial(
+    df_trial: pd.DataFrame,
+    time_col: str,
+    regions: List[Dict],
+    derivatives: List[str] = ["velocity"],
+) -> pd.DataFrame:
+    """
+    Compute ROI centroid velocity magnitude time series for an entire trial.
+    
+    This produces the raw time series (not summary stats) that can be saved
+    for downstream use in RQA/CRQA.
+    
+    Args:
+        df_trial: Trial data with columns [time_col, keypoint, x, y, ...]
+        time_col: Name of time column ('time' or 'frame')
+        regions: List of ROI definitions, each with 'name' and 'keypoints'
+        derivatives: Which derivatives to compute ['velocity', 'acceleration']
+        
+    Returns:
+        DataFrame with columns: [time_col, {roi_name}_vel_mag, ...]
+        One row per time point (N-1 for velocity due to diff).
+    """
+    if df_trial.empty:
+        return pd.DataFrame()
+    
+    # Get unique sorted times
+    times = np.sort(df_trial[time_col].dropna().unique())
+    if len(times) < 2:
+        return pd.DataFrame()
+    
+    # Estimate dt
+    dt = float(np.median(np.diff(times)))
+    if not np.isfinite(dt) or dt <= 0:
+        return pd.DataFrame()
+    
+    # Pivot once for efficiency
+    dims = ["x", "y"]
+    df_pivot = df_trial.pivot_table(
+        index=time_col,
+        columns="keypoint",
+        values=dims,
+        aggfunc="mean"
+    )
+    
+    if df_pivot.empty:
+        return pd.DataFrame()
+    
+    # Output times are N-1 due to velocity diff (use midpoints or end points)
+    # Using end time points (after the diff)
+    out_times = df_pivot.index.to_numpy()[1:]
+    
+    result_data = {time_col: out_times}
+    
+    for region in regions:
+        roi_name = region["name"] if isinstance(region, dict) else region.name
+        keypoints = region["keypoints"] if isinstance(region, dict) else region.keypoints
+        
+        # Compute centroid for this ROI
+        xs: List[np.ndarray] = []
+        ys: List[np.ndarray] = []
+        
+        for kp in keypoints:
+            if ("x", kp) in df_pivot.columns and ("y", kp) in df_pivot.columns:
+                xs.append(df_pivot[("x", kp)].to_numpy())
+                ys.append(df_pivot[("y", kp)].to_numpy())
+        
+        if not xs or not ys:
+            continue
+        
+        # Centroid = mean across keypoints
+        centroid_x = np.nanmean(np.vstack(xs), axis=0)
+        centroid_y = np.nanmean(np.vstack(ys), axis=0)
+        
+        if "velocity" in derivatives:
+            vx = np.diff(centroid_x) / dt
+            vy = np.diff(centroid_y) / dt
+            vel_mag = np.sqrt(vx**2 + vy**2)
+            result_data[f"{roi_name}_vel_mag"] = vel_mag
+            result_data[f"{roi_name}_vel_x"] = vx
+            result_data[f"{roi_name}_vel_y"] = vy
+        
+        if "acceleration" in derivatives:
+            vx = np.diff(centroid_x) / dt
+            vy = np.diff(centroid_y) / dt
+            if vx.size > 0:
+                ax = np.diff(vx) / dt
+                ay = np.diff(vy) / dt
+                acc_mag = np.sqrt(ax**2 + ay**2)
+                # Acceleration has N-2 points; pad with NaN to align
+                result_data[f"{roi_name}_acc_mag"] = np.concatenate([[np.nan], acc_mag])
+                result_data[f"{roi_name}_acc_x"] = np.concatenate([[np.nan], ax])
+                result_data[f"{roi_name}_acc_y"] = np.concatenate([[np.nan], ay])
+    
+    return pd.DataFrame(result_data)

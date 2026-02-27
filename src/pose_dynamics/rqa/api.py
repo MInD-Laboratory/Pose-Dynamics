@@ -163,8 +163,12 @@ def _compute_derived_series(
     pivot: pd.DataFrame,
     df_head: Optional[pd.DataFrame] = None,
 ) -> dict[str, np.ndarray]:
-    """Derived signals (blink, mouth, pupil, head motion) on pivoted trial data."""
-
+    """Derived signals (blink, mouth, pupil, head motion) on pivoted trial data.
+    
+    Args:
+        pivot: Pivoted dataframe with time index and (dim, keypoint) columns
+        df_head: Optional head motion transforms dataframe
+    """
     # Minimal defaults mirror examples/case_study_1_matb/configs/features.yaml
     blink_left_upper = ["38", "39"]
     blink_left_lower = ["41", "42"]
@@ -451,6 +455,16 @@ def run_rqa(
     # Optional alignment transforms (for head motion derived signals)
     align_path = pose_clean_path.parent / "alignment_transforms.parquet"
     df_head = pd.read_parquet(align_path) if align_path.exists() else None
+    
+    # Load pre-computed ROI series if available (from feature extraction)
+    # Look in features directory (sibling to preprocess directory)
+    preprocess_dir = pose_clean_path.parent
+    features_dir = preprocess_dir.parent.parent / "features" / preprocess_dir.name
+    roi_series_path = features_dir / "roi_series.parquet"
+    df_roi_series: Optional[pd.DataFrame] = None
+    if roi_series_path.exists():
+        df_roi_series = pd.read_parquet(roi_series_path)
+    
     windows = pd.read_parquet(windows_path)
 
     if windows.empty:
@@ -480,136 +494,300 @@ def run_rqa(
     plots_dir = out_dir / "plots"
     plots_dir.mkdir(parents=True, exist_ok=True)
 
+    # For CRQA: detect trial pairs (e.g., S002_T1_left <-> S002_T1_right)
+    # Build a mapping of base_id -> {left_trial_id, right_trial_id}
+    trial_pairs: dict[str, dict[str, str]] = {}
+    all_trial_ids = windows["trial_id"].unique().tolist()
+    
+    for tid in all_trial_ids:
+        tid_str = str(tid)
+        if tid_str.endswith("_left"):
+            base = tid_str[:-5]  # Remove "_left"
+            if base not in trial_pairs:
+                trial_pairs[base] = {}
+            trial_pairs[base]["left"] = tid_str
+        elif tid_str.endswith("_right"):
+            base = tid_str[:-6]  # Remove "_right"
+            if base not in trial_pairs:
+                trial_pairs[base] = {}
+            trial_pairs[base]["right"] = tid_str
+
+    # Check if we have valid pairs for CRQA
+    is_paired_crqa = cfg.analysis == "crqa" and any(
+        "left" in p and "right" in p for p in trial_pairs.values()
+    )
+
     # Group windows by trial to avoid repeatedly slicing full dataframes
     windows_by_trial = windows.groupby("trial_id", sort=False)
 
     total_windows = len(windows)
     processed = 0
 
+    # Pre-compute derived series for all trials (needed for paired CRQA)
+    trial_pivots: dict[str, pd.DataFrame] = {}
+    trial_derived: dict[str, dict[str, np.ndarray]] = {}
+    
+    for trial_id in all_trial_ids:
+        df_trial = df[df["trial_id"] == trial_id]
+        if df_trial.empty:
+            continue
+        pivot = _pivot_xy(df_trial, tcol)
+        if pivot.empty:
+            continue
+        trial_pivots[str(trial_id)] = pivot
+        
+        # Align head data
+        df_head_filtered = None
+        if df_head is not None:
+            dh = df_head[df_head["trial_id"] == trial_id]
+            if not dh.empty and tcol in dh.columns:
+                dh = dh.drop_duplicates(subset=[tcol])
+                dh = dh.set_index(tcol).reindex(pivot.index)
+                df_head_filtered = dh
+        
+        # Compute derived series (blink, mouth, pupil, head motion, and fallback ROI)
+        derived = _compute_derived_series(pivot, df_head_filtered)
+        
+        # Merge in pre-computed ROI series if available (takes precedence)
+        if df_roi_series is not None:
+            roi_trial = df_roi_series[df_roi_series["trial_id"] == trial_id]
+            if not roi_trial.empty:
+                # Get the ROI columns (exclude trial_id and time)
+                roi_cols = [c for c in roi_trial.columns if c not in ["trial_id", tcol, "time", "frame"]]
+                for col in roi_cols:
+                    series_values = roi_trial[col].to_numpy()
+                    if series_values.size > 0:
+                        derived[col] = series_values
+        
+        trial_derived[str(trial_id)] = derived
+
     with stage_progress_with_total(
         progress_title or "RQA", total_windows
     ) as update_progress:
-        for trial_id, win_df in windows_by_trial:
-            df_trial = df[df["trial_id"] == trial_id]
-            if df_trial.empty:
-                processed += len(win_df)
-                update_progress(f"{trial_id} | no data", advance=len(win_df))
-                continue
-
-            # Per-Trial Optimization: Pivot once (Time x Keypoints)
-            pivot = _pivot_xy(df_trial, tcol)
-            if pivot.empty:
-                processed += len(win_df)
-                update_progress(f"{trial_id} | empty pivot", advance=len(win_df))
-                continue
-
-            # Align head data to pivot index
-            df_head_filtered = None
-            if df_head is not None:
-                dh = df_head[df_head["trial_id"] == trial_id]
-                if not dh.empty:
-                    if tcol in dh.columns:
-                        dh = dh.drop_duplicates(subset=[tcol])
-                        dh = dh.set_index(tcol).reindex(pivot.index)
-                        df_head_filtered = dh
-
-            # Compute derived signals for the whole trial
-            derived_trial = _compute_derived_series(pivot, df_head_filtered)
-
-            # Pre-calc times for binary search
-            times = pivot.index.to_numpy()
-
-            for _, w in win_df.iterrows():
-                s = float(w["start"])
-                e = float(w["end"])
-
-                istart = np.searchsorted(times, s)
-                iend = np.searchsorted(times, e)
-
-                if istart >= iend:
-                    processed += 1
-                    update_progress(f"{trial_id} | empty window", advance=1)
+        # For paired CRQA, process by session pairs
+        if is_paired_crqa:
+            for base_id, pair in trial_pairs.items():
+                if "left" not in pair or "right" not in pair:
                     continue
-
-                # Slice series to the window and compute distance just for that window
-                X_win = _series_matrix(
-                    pivot, kps_x, cfg.signal, derived_trial, indices=slice(istart, iend)
-                )
-                if X_win.size == 0:
-                    processed += 1
-                    update_progress(f"{trial_id} | empty signal", advance=1)
+                
+                left_tid = pair["left"]
+                right_tid = pair["right"]
+                
+                if left_tid not in trial_pivots or right_tid not in trial_pivots:
                     continue
-
-                Xn_win = norm_utils.normalize_data(X_win, cfg.norm)
-
-                Yn_win = None
-                if cfg.analysis == "crqa":
-                    if kps_y:
-                        Y_win = _series_matrix(
-                            pivot,
-                            kps_y,
-                            cfg.signal,
-                            derived_trial,
-                            indices=slice(istart, iend),
-                        )
-                    elif df_y is not None:
+                
+                pivot_left = trial_pivots[left_tid]
+                pivot_right = trial_pivots[right_tid]
+                derived_left = trial_derived[left_tid]
+                derived_right = trial_derived[right_tid]
+                
+                # Get windows for left trial (use left as reference for window timing)
+                if left_tid not in windows_by_trial.groups:
+                    continue
+                win_df = windows_by_trial.get_group(left_tid)
+                
+                times_left = pivot_left.index.to_numpy()
+                times_right = pivot_right.index.to_numpy()
+                
+                for _, w in win_df.iterrows():
+                    s = float(w["start"])
+                    e = float(w["end"])
+                    
+                    istart_l = np.searchsorted(times_left, s)
+                    iend_l = np.searchsorted(times_left, e)
+                    istart_r = np.searchsorted(times_right, s)
+                    iend_r = np.searchsorted(times_right, e)
+                    
+                    if istart_l >= iend_l or istart_r >= iend_r:
                         processed += 1
-                        update_progress(f"{trial_id} | missing Y", advance=1)
+                        update_progress(f"{base_id} | empty window", advance=1)
                         continue
-                    else:
+                    
+                    # Get X series from left participant
+                    X_win = _series_matrix(
+                        pivot_left, kps_x, cfg.signal, derived_left, 
+                        indices=slice(istart_l, iend_l)
+                    )
+                    # Get Y series from right participant
+                    Y_win = _series_matrix(
+                        pivot_right, kps_y if kps_y else kps_x, cfg.signal, derived_right,
+                        indices=slice(istart_r, iend_r)
+                    )
+                    
+                    if X_win.size == 0 or Y_win.size == 0:
                         processed += 1
-                        update_progress(f"{trial_id} | missing Y", advance=1)
+                        update_progress(f"{base_id} | empty signal", advance=1)
                         continue
-
-                    if Y_win.size == 0:
-                        processed += 1
-                        update_progress(f"{trial_id} | empty Y", advance=1)
-                        continue
-
+                    
+                    # Align lengths (truncate to shorter)
+                    min_len = min(X_win.shape[0], Y_win.shape[0])
+                    X_win = X_win[:min_len]
+                    Y_win = Y_win[:min_len]
+                    
+                    Xn_win = norm_utils.normalize_data(X_win, cfg.norm)
                     Yn_win = norm_utils.normalize_data(Y_win, cfg.norm)
-
-                if cfg.analysis == "crqa":
+                    
                     ds = rqa_utils_cpp.rqa_dist(Xn_win, Yn_win, dim=cfg.m, lag=cfg.tau)
-                else:
-                    ds = rqa_utils_cpp.rqa_dist(Xn_win, Xn_win, dim=cfg.m, lag=cfg.tau)
-
-                dist_win = ds.get("d")
-                if dist_win is None or dist_win.size == 0:
+                    dist_win = ds.get("d")
+                    
+                    if dist_win is None or dist_win.size == 0:
+                        processed += 1
+                        update_progress(f"{base_id} | empty dist", advance=1)
+                        continue
+                    
+                    eps = _epsilon(dist_win, cfg)
+                    
+                    # CRQA stats
+                    td, rs, mats, err_code = rqa_utils_cpp.rqa_stats(
+                        dist_win.astype(float),
+                        rescale=bool(cfg.rescale_norm),
+                        rad=float(eps),
+                        diag_ignore=0,  # No theiler for cross-recurrence
+                        minl=int(cfg.l_min),
+                        rqa_mode="cross",
+                    )
+                    
+                    if err_code != 0 or rs is None:
+                        processed += 1
+                        update_progress(f"{base_id} | rqa err {err_code}", advance=1)
+                        continue
+                    
+                    stats_rows.append(
+                        {
+                            "trial_id": base_id,  # Use base session ID
+                            "window_id": w["window_id"],
+                            "epsilon": float(eps),
+                            **{k: float(v) for k, v in rs.items()},
+                        }
+                    )
+                    
                     processed += 1
-                    update_progress(f"{trial_id} | empty dist", advance=1)
+                    label = f"{base_id} | {w['window_id']} ({processed}/{total_windows})"
+                    update_progress(label, advance=1)
+        
+        else:
+            # Original single-trial processing (RQA or same-trial CRQA)
+            for trial_id, win_df in windows_by_trial:
+                df_trial = df[df["trial_id"] == trial_id]
+                if df_trial.empty:
+                    processed += len(win_df)
+                    update_progress(f"{trial_id} | no data", advance=len(win_df))
                     continue
 
-                eps = _epsilon(dist_win, cfg)
-
-                # Delegate stats to C++ backend
-                rqa_mode = "cross" if cfg.analysis == "crqa" else "auto"
-                diag_ignore = 0 if rqa_mode == "cross" else cfg.theiler
-                td, rs, mats, err_code = rqa_utils_cpp.rqa_stats(
-                    dist_win.astype(float),
-                    rescale=bool(cfg.rescale_norm),
-                    rad=float(eps),
-                    diag_ignore=int(diag_ignore),
-                    minl=int(cfg.l_min),
-                    rqa_mode=rqa_mode,
-                )
-
-                if err_code != 0 or rs is None:
-                    processed += 1
-                    update_progress(f"{trial_id} | rqa err {err_code}", advance=1)
+                # Per-Trial Optimization: Pivot once (Time x Keypoints)
+                pivot = _pivot_xy(df_trial, tcol)
+                if pivot.empty:
+                    processed += len(win_df)
+                    update_progress(f"{trial_id} | empty pivot", advance=len(win_df))
                     continue
 
-                stats_rows.append(
-                    {
-                        "trial_id": trial_id,
-                        "window_id": w["window_id"],
-                        "epsilon": float(eps),
-                        **{k: float(v) for k, v in rs.items()},
-                    }
-                )
+                # Align head data to pivot index
+                df_head_filtered = None
+                if df_head is not None:
+                    dh = df_head[df_head["trial_id"] == trial_id]
+                    if not dh.empty:
+                        if tcol in dh.columns:
+                            dh = dh.drop_duplicates(subset=[tcol])
+                            dh = dh.set_index(tcol).reindex(pivot.index)
+                            df_head_filtered = dh
 
-                processed += 1
-                label = f"{trial_id} | {w['window_id']} ({processed}/{total_windows})"
-                update_progress(label, advance=1)
+                # Compute derived signals for the whole trial
+                derived_trial = _compute_derived_series(pivot, df_head_filtered)
+
+                # Pre-calc times for binary search
+                times = pivot.index.to_numpy()
+
+                for _, w in win_df.iterrows():
+                    s = float(w["start"])
+                    e = float(w["end"])
+
+                    istart = np.searchsorted(times, s)
+                    iend = np.searchsorted(times, e)
+
+                    if istart >= iend:
+                        processed += 1
+                        update_progress(f"{trial_id} | empty window", advance=1)
+                        continue
+
+                    # Slice series to the window and compute distance just for that window
+                    X_win = _series_matrix(
+                        pivot, kps_x, cfg.signal, derived_trial, indices=slice(istart, iend)
+                    )
+                    if X_win.size == 0:
+                        processed += 1
+                        update_progress(f"{trial_id} | empty signal", advance=1)
+                        continue
+
+                    Xn_win = norm_utils.normalize_data(X_win, cfg.norm)
+
+                    Yn_win = None
+                    if cfg.analysis == "crqa":
+                        if kps_y:
+                            Y_win = _series_matrix(
+                                pivot,
+                                kps_y,
+                                cfg.signal,
+                                derived_trial,
+                                indices=slice(istart, iend),
+                            )
+                        elif df_y is not None:
+                            processed += 1
+                            update_progress(f"{trial_id} | missing Y", advance=1)
+                            continue
+                        else:
+                            processed += 1
+                            update_progress(f"{trial_id} | missing Y", advance=1)
+                            continue
+
+                        if Y_win.size == 0:
+                            processed += 1
+                            update_progress(f"{trial_id} | empty Y", advance=1)
+                            continue
+
+                        Yn_win = norm_utils.normalize_data(Y_win, cfg.norm)
+
+                    if cfg.analysis == "crqa":
+                        ds = rqa_utils_cpp.rqa_dist(Xn_win, Yn_win, dim=cfg.m, lag=cfg.tau)
+                    else:
+                        ds = rqa_utils_cpp.rqa_dist(Xn_win, Xn_win, dim=cfg.m, lag=cfg.tau)
+
+                    dist_win = ds.get("d")
+                    if dist_win is None or dist_win.size == 0:
+                        processed += 1
+                        update_progress(f"{trial_id} | empty dist", advance=1)
+                        continue
+
+                    eps = _epsilon(dist_win, cfg)
+
+                    # Delegate stats to C++ backend
+                    rqa_mode = "cross" if cfg.analysis == "crqa" else "auto"
+                    diag_ignore = 0 if rqa_mode == "cross" else cfg.theiler
+                    td, rs, mats, err_code = rqa_utils_cpp.rqa_stats(
+                        dist_win.astype(float),
+                        rescale=bool(cfg.rescale_norm),
+                        rad=float(eps),
+                        diag_ignore=int(diag_ignore),
+                        minl=int(cfg.l_min),
+                        rqa_mode=rqa_mode,
+                    )
+
+                    if err_code != 0 or rs is None:
+                        processed += 1
+                        update_progress(f"{trial_id} | rqa err {err_code}", advance=1)
+                        continue
+
+                    stats_rows.append(
+                        {
+                            "trial_id": trial_id,
+                            "window_id": w["window_id"],
+                            "epsilon": float(eps),
+                            **{k: float(v) for k, v in rs.items()},
+                        }
+                    )
+
+                    processed += 1
+                    label = f"{trial_id} | {w['window_id']} ({processed}/{total_windows})"
+                    update_progress(label, advance=1)
 
     stats_df = pd.DataFrame(stats_rows)
     stats_path = out_dir / "rqa_stats.parquet"
