@@ -108,7 +108,7 @@ def roi_feature_series(
         
     Returns:
         Dict mapping feature names to time series arrays.
-        Keys follow pattern: '{roi_name}_vel_mag', '{roi_name}_vel_x', etc.
+        Keys follow pattern: '{roi_name}_vel_mag', '{roi_name}_acc_mag'.
     """
     out: Dict[str, np.ndarray] = {}
     
@@ -129,13 +129,6 @@ def roi_feature_series(
         vel_mag = _compute_velocity_magnitude(cx, cy, dt)
         if vel_mag is not None:
             out[f"{roi_name}_vel_mag"] = vel_mag
-            
-            # Also store component velocities
-            if np.isfinite(dt) and dt > 0:
-                vx = np.diff(cx) / dt
-                vy = np.diff(cy) / dt
-                out[f"{roi_name}_vel_x"] = vx
-                out[f"{roi_name}_vel_y"] = vy
     
     # Compute acceleration if requested
     if "acceleration" in derivatives:
@@ -148,8 +141,6 @@ def roi_feature_series(
                 ay = np.diff(vy) / dt
                 acc_mag = np.sqrt(ax**2 + ay**2)
                 out[f"{roi_name}_acc_mag"] = acc_mag
-                out[f"{roi_name}_acc_x"] = ax
-                out[f"{roi_name}_acc_y"] = ay
     
     return out
 
@@ -232,8 +223,6 @@ def compute_roi_timeseries_for_trial(
             vy = np.diff(centroid_y) / dt
             vel_mag = np.sqrt(vx**2 + vy**2)
             result_data[f"{roi_name}_vel_mag"] = vel_mag
-            result_data[f"{roi_name}_vel_x"] = vx
-            result_data[f"{roi_name}_vel_y"] = vy
         
         if "acceleration" in derivatives:
             vx = np.diff(centroid_x) / dt
@@ -244,7 +233,5 @@ def compute_roi_timeseries_for_trial(
                 acc_mag = np.sqrt(ax**2 + ay**2)
                 # Acceleration has N-2 points; pad with NaN to align
                 result_data[f"{roi_name}_acc_mag"] = np.concatenate([[np.nan], acc_mag])
-                result_data[f"{roi_name}_acc_x"] = np.concatenate([[np.nan], ax])
-                result_data[f"{roi_name}_acc_y"] = np.concatenate([[np.nan], ay])
     
     return pd.DataFrame(result_data)

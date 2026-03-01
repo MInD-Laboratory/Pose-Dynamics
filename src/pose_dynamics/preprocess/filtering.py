@@ -98,48 +98,65 @@ def apply_detrend_filter(
     metadata: list[dict] = []
     for trial_id, df_trial in df.groupby("trial_id", sort=False):
         time_col = "time" if "time" in df_trial.columns else "frame"
-        dt = _median_dt(df_trial[time_col])
+        df_trial_out = df_trial.copy()
+        cutoff_hz = float(cfg.detrend_filter.lowpass.cutoff_hz)
+        order = int(cfg.detrend_filter.lowpass.order)
 
-        if cfg.detrend_filter.detrend == "linear":
-            df_trial = _apply_linear_detrend(df_trial, dims)
-        elif cfg.detrend_filter.detrend == "highpass":
-            if not np.isfinite(dt) or dt <= 0:
-                raise ConfigError("highpass detrend requires a valid timebase.")
-            cutoff_hz = float(cfg.detrend_filter.lowpass.cutoff_hz)
-            df_trial = _apply_filter(
-                df_trial,
-                dims,
-                "highpass",
-                cutoff_hz,
-                dt,
-                cfg.detrend_filter.lowpass.order,
+        if "keypoint" in df_trial.columns:
+            series_groups = df_trial.groupby("keypoint", sort=False)
+        else:
+            series_groups = [(None, df_trial)]
+
+        for keypoint, df_series in series_groups:
+            if df_series.empty:
+                continue
+
+            # Filter each keypoint trajectory independently in time order.
+            df_series_f = df_series.sort_values(time_col).copy()
+            dt = _median_dt(df_series_f[time_col])
+
+            if cfg.detrend_filter.detrend == "linear":
+                df_series_f = _apply_linear_detrend(df_series_f, dims)
+            elif cfg.detrend_filter.detrend == "highpass":
+                if not np.isfinite(dt) or dt <= 0:
+                    raise ConfigError("highpass detrend requires a valid timebase.")
+                df_series_f = _apply_filter(
+                    df_series_f,
+                    dims,
+                    "highpass",
+                    cutoff_hz,
+                    dt,
+                    order,
+                )
+
+            if cfg.detrend_filter.lowpass.enabled:
+                if not np.isfinite(dt) or dt <= 0:
+                    raise ConfigError("lowpass filter requires a valid timebase.")
+                df_series_f = _apply_filter(
+                    df_series_f,
+                    dims,
+                    "lowpass",
+                    cutoff_hz,
+                    dt,
+                    order,
+                )
+
+            df_trial_out.loc[df_series_f.index, dims] = df_series_f[dims].to_numpy()
+
+            metadata.append(
+                {
+                    "trial_id": trial_id,
+                    "keypoint": keypoint if keypoint is not None else "__all__",
+                    "time_col": time_col,
+                    "dt_median": float(dt) if np.isfinite(dt) else None,
+                    "detrend": cfg.detrend_filter.detrend,
+                    "lowpass_enabled": bool(cfg.detrend_filter.lowpass.enabled),
+                    "lowpass_cutoff_hz": cutoff_hz,
+                    "lowpass_order": order,
+                }
             )
 
-        if cfg.detrend_filter.lowpass.enabled:
-            if not np.isfinite(dt) or dt <= 0:
-                raise ConfigError("lowpass filter requires a valid timebase.")
-            cutoff_hz = float(cfg.detrend_filter.lowpass.cutoff_hz)
-            df_trial = _apply_filter(
-                df_trial,
-                dims,
-                "lowpass",
-                cutoff_hz,
-                dt,
-                cfg.detrend_filter.lowpass.order,
-            )
-
-        parts.append(df_trial)
-        metadata.append(
-            {
-                "trial_id": trial_id,
-                "time_col": time_col,
-                "dt_median": float(dt) if np.isfinite(dt) else None,
-                "detrend": cfg.detrend_filter.detrend,
-                "lowpass_enabled": bool(cfg.detrend_filter.lowpass.enabled),
-                "lowpass_cutoff_hz": float(cfg.detrend_filter.lowpass.cutoff_hz),
-                "lowpass_order": int(cfg.detrend_filter.lowpass.order),
-            }
-        )
+        parts.append(df_trial_out)
 
     if not parts:
         return df, metadata
