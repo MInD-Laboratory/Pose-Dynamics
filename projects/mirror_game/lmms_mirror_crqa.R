@@ -60,7 +60,7 @@ results <- purrr::map_df(metrics, function(metric) {
 })
 
 results
-write_csv(results, "/Users/cartersale/Documents/Pose_Dynamics/projects/mirror_game/data/rqa/mixed_model_results_crqa.csv")
+write_csv(results, "/Users/cartersale/Research/Projects/Pose_Dynamics/projects/mirror_game/data/rqa/mixed_model_results_crqa.csv")
 
 
 

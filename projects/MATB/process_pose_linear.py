@@ -68,13 +68,13 @@ from pose_dynamics.io import (
     ensure_dirs, load_raw_files, save_json_summary,
     get_output_filename, write_per_frame_metrics
 )
-from pose_dynamics.preprocessing import (
+from pose_dynamics.preprocessing.pose_preprocessing import (
     detect_conf_prefix_case_insensitive,
     relevant_indices, filter_df_to_relevant, confidence_mask
 )
 from pose_dynamics.signal_utils import interpolate_run_limited, butterworth_segment_filter
 from pose_dynamics.normalization import normalize_to_screen, interocular_series
-from pose_dynamics.features import (
+from pose_dynamics.features.pose_features import (
     procrustes_features_for_file, original_features_for_file,
     compute_linear_from_perframe_dir
 )
