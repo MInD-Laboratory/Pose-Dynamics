@@ -7,3 +7,6 @@
 [submodule "src/pose_dynamics/rqa_submodule"]
 	path = src/pose_dynamics/rqa_submodule
 	url = https://github.com/xkiwilabs/Recurrence-Quantification-Analysis
+[submodule "projects/MATB/Measuring_Workload_Dynamics_in_OpenMATB"]
+	path = projects/MATB/Measuring_Workload_Dynamics_in_OpenMATB
+	url = https://github.com/MInD-Laboratory/Measuring_Workload_Dynamics_in_OpenMATB.git

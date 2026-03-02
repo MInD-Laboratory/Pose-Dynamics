@@ -48,5 +48,10 @@ class GlobalConfig:
 
 _CFG = GlobalConfig()
 
+
+def set_cfg(cfg) -> None:
+    global _CFG
+    _CFG = cfg
+
 def get_cfg() -> GlobalConfig:
     return _CFG
