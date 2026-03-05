@@ -1,4 +1,4 @@
-# MATB Case Study
+# MATB: Case Study 1
 
 This directory contains the MATB case study.
 All analysis and statistical modeling live in the submodule:
