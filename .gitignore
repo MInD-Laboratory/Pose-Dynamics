@@ -47,4 +47,4 @@ projects/Mosaic/notebooks/cache_roi_windows/
 *.parquet
 
 # Extra scripts
-Mosaic/extra/
+projects/Mosaic/extras/
