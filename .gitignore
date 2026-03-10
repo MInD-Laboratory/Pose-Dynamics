@@ -21,6 +21,8 @@ __pycache__/
 
 # Build / packaging
 *.egg-info
+build/
+dist/
 
 # Mosaic Results
 projects/Mosaic/animations
