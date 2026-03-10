@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Figure 5 Replacement | Pose Analysis Pipeline</title>
+  <style>
+    :root {
+      --bg-1: #f5f8fc;
+      --bg-2: #eaf0f7;
+      --paper: #ffffff;
+      --ink: #17212f;
+      --muted: #5f6c7d;
+      --stroke: #d6dde7;
+      --shadow: 0 14px 34px rgba(18, 26, 38, 0.10);
+      --acq: #ffa600;
+      --feat: #ff6361;
+      --prep: #bc5090;
+      --lin: #58508d;
+      --rqa: #003f5c;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Times New Roman", Times, serif;
+      color: var(--ink);
+      background: #ffffff;
+      padding: 18px;
+    }
+
+    .figure {
+      max-width: 1320px;
+      margin: 0 auto;
+      border: 1px solid var(--stroke);
+      border-radius: 20px;
+      background: var(--paper);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .stages {
+      display: grid;
+      grid-template-columns: 200px repeat(5, 1fr);
+      gap: 0;
+      border-bottom: 1px solid var(--stroke);
+      background: linear-gradient(180deg, #fcfdff, #f7fafe);
+    }
+    .stages div {
+      padding: 12px 11px;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.7px;
+      font-weight: 700;
+      border-right: 1px solid var(--stroke);
+    }
+    .stages div:last-child { border-right: 0; }
+    .stages .blank { color: transparent; }
+    .stages .acq { color: var(--acq); }
+    .stages .feat { color: var(--feat); }
+    .stages .prep { color: var(--prep); }
+    .stages .lin { color: var(--lin); }
+    .stages .rqa { color: var(--rqa); }
+
+    .row {
+      display: grid;
+      grid-template-columns: 200px repeat(5, 1fr);
+      min-height: 164px;
+      border-bottom: 1px solid var(--stroke);
+      background: linear-gradient(180deg, #ffffff, #fdfefe);
+    }
+    .row:last-of-type { border-bottom: 0; }
+
+    .case {
+      padding: 17px 13px;
+      border-right: 1px solid var(--stroke);
+      background: linear-gradient(180deg, #f9fbff, #f4f8fd);
+    }
+    .case h2 {
+      margin: 0;
+      font-size: 18px;
+      line-height: 1.1;
+    }
+    .case p {
+      margin: 7px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .cell {
+      position: relative;
+      border-right: 1px solid var(--stroke);
+      padding: 12px 13px;
+      display: flex;
+      align-items: center;
+    }
+    .row .cell:last-child { border-right: 0; }
+
+    .card {
+      width: 100%;
+      border: 1px solid transparent;
+      border-left-width: 4px;
+      border-radius: 13px;
+      background: #ffffff;
+      box-shadow: 0 4px 10px rgba(19, 28, 40, 0.07);
+      padding: 11px 12px;
+    }
+    .card p {
+      margin: 0;
+      font-size: 13px;
+      line-height: 1.34;
+      color: var(--ink);
+    }
+    .card p + p { margin-top: 5px; }
+
+    .acq-card { border-left-color: #d88e00; background: rgba(255, 166, 0, 0.20); }
+    .feat-card { border-left-color: #d94f4e; background: rgba(255, 99, 97, 0.20); }
+    .prep-card { border-left-color: #943f71; background: rgba(188, 80, 144, 0.20); }
+    .lin-card { border-left-color: #433c69; background: rgba(88, 80, 141, 0.20); }
+    .rqa-card { border-left-color: #002a3e; background: rgba(0, 63, 92, 0.20); }
+
+    .arrow {
+      position: absolute;
+      right: -9px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: #8a95a3;
+      font-size: 21px;
+      font-weight: 600;
+      pointer-events: none;
+      z-index: 2;
+    }
+    .no-arrow .arrow { display: none; }
+
+    @media (max-width: 1020px) {
+      body { padding: 10px; }
+      .stages { display: none; }
+      .row {
+        grid-template-columns: 1fr;
+        min-height: 0;
+      }
+      .case {
+        border-right: 0;
+        border-left: 5px solid #d4deea;
+      }
+      .cell {
+        border-right: 0;
+        padding: 8px 10px;
+      }
+      .arrow { display: none; }
+      .cell::before {
+        display: block;
+        margin: 0 0 5px;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.7px;
+        font-weight: 700;
+        color: #536277;
+      }
+      .acq-cell::before { content: "Acquisition"; color: var(--acq); }
+      .feat-cell::before { content: "Features"; color: var(--feat); }
+      .prep-cell::before { content: "Preprocessing"; color: var(--prep); }
+      .lin-cell::before { content: "Linear Metrics"; color: var(--lin); }
+      .rqa-cell::before { content: "Recurrence"; color: var(--rqa); }
+    }
+
+    @media print {
+      @page { size: A4 landscape; margin: 10mm; }
+
+      * {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+
+      body {
+        margin: 0;
+        padding: 0;
+        background: #ffffff !important;
+      }
+
+      .figure {
+        width: 100%;
+        max-width: none;
+        border-radius: 0;
+        box-shadow: none;
+        overflow: visible;
+      }
+
+      .stages {
+        display: grid !important;
+        grid-template-columns: 200px repeat(5, 1fr) !important;
+        background: #ffffff;
+      }
+
+      .row {
+        grid-template-columns: 200px repeat(5, 1fr) !important;
+        min-height: 0;
+        break-inside: avoid-page;
+        page-break-inside: avoid;
+        background: #ffffff;
+      }
+
+      .case {
+        border-left: 0 !important;
+        border-right: 1.2px solid #8f9caf !important;
+        background: #ffffff;
+      }
+
+      .cell {
+        border-right: 1px solid var(--stroke);
+        padding: 8px 9px;
+      }
+
+      .row .cell:first-of-type {
+        border-left: 1.2px solid #8f9caf !important;
+      }
+
+      .card {
+        box-shadow: none;
+      }
+
+      .arrow {
+        display: block !important;
+        right: -7px;
+        font-size: 16px;
+      }
+
+      .no-arrow .arrow { display: none !important; }
+      .cell::before { display: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <section class="figure" role="img" aria-label="Three-case analysis pipeline across acquisition, features, preprocessing, linear metrics, and recurrence analysis.">
+    <div class="stages">
+      <div class="blank">.</div>
+      <div class="acq">Acquisition</div>
+      <div class="feat">Features</div>
+      <div class="prep">Preprocessing</div>
+      <div class="lin">Linear Metrics</div>
+      <div class="rqa">Recurrence</div>
+    </div>
+
+    <article class="row">
+      <div class="case">
+        <h2>Case 1</h2>
+        <p>2D facial pose dynamics</p>
+      </div>
+      <div class="cell acq-cell">
+        <div class="card acq-card">
+          <p>Single webcam (60 Hz) recording</p>
+          <p>OpenPose of facial keypoints</p>
+        </div>
+        <span class="arrow">&rarr;</span>
+      </div>
+      <div class="cell feat-cell">
+        <div class="card feat-card">
+          <p>Blink and mouth aperture</p>
+          <p>Pupil and head composites</p>
+        </div>
+        <span class="arrow">&rarr;</span>
+      </div>
+      <div class="cell prep-cell">
+        <div class="card prep-card">
+          <p>Confidence mask and interpolation</p>
+          <p>10 Hz low pass filter</p>
+          <p>Global procrustes</p>
+        </div>
+        <span class="arrow">&rarr;</span>
+      </div>
+      <div class="cell lin-cell">
+        <div class="card lin-card">
+          <p>Velocity</p>
+          <p>Acceleration</p>
+        </div>
+        <span class="arrow">&rarr;</span>
+      </div>
+      <div class="cell rqa-cell no-arrow">
+        <div class="card rqa-card">
+          <p>Auto-RQA</p>
+          <p>CRQA</p>
+          <p>m = 4, tau = 20</p>
+        </div>
+      </div>
+    </article>
+
+    <article class="row">
+      <div class="case">
+        <h2>Case 2</h2>
+        <p>2D upper body interpersonal dynamics</p>
+      </div>
+      <div class="cell acq-cell">
+        <div class="card acq-card">
+          <p>Dual webcam (60 Hz) recordings</p>
+          <p>OpenPose of face and body keypoints</p>
+        </div>
+        <span class="arrow">&rarr;</span>
+      </div>
+      <div class="cell feat-cell">
+        <div class="card feat-card">
+          <p>Regions of interest: face, upper body, arms</p>
+          <p>Velocity magnitude for each ROI centroid</p>
+        </div>
+        <span class="arrow">&rarr;</span>
+      </div>
+      <div class="cell prep-cell">
+        <div class="card prep-card">
+          <p>Confidence mask and interpolation</p>
+          <p>10 Hz low pass filter</p>
+          <p>Downsampled to 30 Hz</p>
+          <p>Global procrustes</p>
+        </div>
+        <span class="arrow">&rarr;</span>
+      </div>
+      <div class="cell lin-cell">
+        <div class="card lin-card">
+          <p>RMS movement magnitude</p>
+          <p>Mean and standard deviation of velocity magnitude</p>
+          <p>Cross-correlation of velocity magnitude</p>
+        </div>
+        <span class="arrow">&rarr;</span>
+      </div>
+      <div class="cell rqa-cell no-arrow">
+        <div class="card rqa-card">
+          <p>Windowed CRQA</p>
+          <p>m = 4, tau = 10</p>
+        </div>
+      </div>
+    </article>
+
+    <article class="row">
+      <div class="case">
+        <h2>Case 3</h2>
+        <p>3D full body interpersonal dynamics</p>
+      </div>
+      <div class="cell acq-cell">
+        <div class="card acq-card">
+          <p>Two stereo ZED (60 Hz) recordings</p>
+          <p>3D skeleton model with 38 keypoints</p>
+        </div>
+        <span class="arrow">&rarr;</span>
+      </div>
+      <div class="cell feat-cell">
+        <div class="card feat-card">
+          <p>38 keypoints tracked</p>
+          <p>5 keypoints selected: head, left/right wrists, left/right ankles</p>
+        </div>
+        <span class="arrow">&rarr;</span>
+      </div>
+      <div class="cell prep-cell">
+        <div class="card prep-card">
+          <p>Centering and rigid alignment</p>
+          <p>5 Hz low pass filter</p>
+          <p>Resampled to 30 Hz</p>
+        </div>
+        <span class="arrow">&rarr;</span>
+      </div>
+      <div class="cell lin-cell">
+        <div class="card lin-card">
+          <p>Displacement</p>
+          <p>Velocity</p>
+          <p>Acceleration</p>
+          <p>Whole-body PCA</p>
+        </div>
+        <span class="arrow">&rarr;</span>
+      </div>
+      <div class="cell rqa-cell no-arrow">
+        <div class="card rqa-card">
+          <p>CRQA per keypoint pair</p>
+          <p>Fixed RR = 2.5%</p>
+        </div>
+      </div>
+    </article>
+  </section>
+</body>
+</html>
