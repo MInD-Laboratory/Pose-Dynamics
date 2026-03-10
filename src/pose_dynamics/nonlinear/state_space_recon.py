@@ -1,4 +1,40 @@
-# utils/nl_utils.py
+"""
+State-space reconstruction utilities for nonlinear time-series analysis.
+
+Before recurrence quantification analysis (RQA) can be applied, the underlying
+attractor must be reconstructed in a suitable phase space.  Following Takens'
+embedding theorem, a scalar time series x(t) is unfolded into an m-dimensional
+delay-coordinate vector:
+
+    X(t) = [x(t), x(t+τ), x(t+2τ), ..., x(t+(m−1)τ)]
+
+where τ is the *time delay* (``tLag``) and m is the *embedding dimension*
+(``eDim``).  This module provides data-driven methods for estimating these two
+parameters from the data itself:
+
+* **Auto Mutual Information (AMI)** selects τ as the lag at which the AMI
+  function I(τ) reaches its first local minimum.  At this point successive
+  delay coordinates carry maximally independent information, avoiding both
+  redundancy (small τ, nearly identical values) and irrelevance (large τ,
+  decorrelated chaos).
+
+* **False Nearest Neighbours (FNN)** selects m by testing whether points that
+  appear to be neighbours in dimension d are still neighbours when one more
+  dimension is added.  The fraction of "false" neighbours falls to near zero
+  at the true embedding dimension, indicating the attractor is fully unfolded.
+
+* **Cross-AMI (X-AMI)** is the cross-signal analogue of AMI, used when a
+  shared time delay must be chosen for two coupled time series (e.g., the two
+  participants in a Cross-RQA dyadic analysis).
+
+References
+----------
+Fraser & Swinney (1986). Independent coordinates for strange attractors from
+    mutual information. *Physical Review A*, 33(2), 1134.
+Kennel, Brown & Abarbanel (1992). Determining embedding dimension for
+    phase-space reconstruction using a geometrical construction.
+    *Physical Review A*, 45(6), 3403.
+"""
 from __future__ import annotations
 import math
 import random
