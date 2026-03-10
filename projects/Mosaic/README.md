@@ -26,7 +26,7 @@ Run them in the order listed below.
 | Step | Notebook | Description |
 |------|----------|-------------|
 | 1 | `analysis_pipeline.ipynb` | Preprocessing, Procrustes alignment, linear feature extraction and windowed CRQA |
-| 2 | `mixed_effects_models.ipynb` Linear mixed-effects models testing the effect of experimental condition on recurrence and kinematic measures |
+| 2 | `mixed_effects_models.ipynb` | Linear mixed-effects models testing the effect of experimental condition on recurrence and kinematic measures |
 | 3 | `visualisation.ipynb` | Visualisations for for the recurrence and kinematic results |
 
 ### Step 1 — Preprocessing and Feature Extraction
@@ -85,5 +85,5 @@ The shared Python library code for this case study lives in
 |--------|-------------|
 | `pipeline.py` | Data loading, preprocessing pipeline, keypoint extraction, and windowing utilities |
 | `alignment.py` | Procrustes alignment, symmetric template construction, and limb-length constraints |
-| `features.py` | Velocity computation, custom facial features (blink and lip distance), and linear kinematic metrics |
-| `visualization.py` | Alignment diagnostics, step-by-step Procrustes visualisation, and PCA movement animations |
+| `features.py` | Velocity computation and linear kinematic metrics |
+| `visualization.py` | Alignment diagnostics, step-by-step Procrustes visualisation |
