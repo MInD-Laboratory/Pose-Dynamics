@@ -1,8 +1,30 @@
+"""
+Mirror Game dataset configuration.
+
+This module defines all dataset-specific constants for the Mirror Game case
+study: sampling parameters, the 38-keypoint skeleton layout produced by the
+ZED stereo-camera body-tracking system, body-region groupings used for
+kinematic feature extraction, experimental condition labels, and the RQA
+measures reported in the paper.
+
+The Mirror Game is a joint-improvisation paradigm in which two participants
+move together under three visual-feedback conditions that systematically vary
+the coupling information available:
+  - **Back-to-back (b2b)**: no visual feedback between partners.
+  - **Unidirectional (uni)**: one designated leader can see the follower but
+    not vice versa.
+  - **Face-to-face (f2f)**: mutual visual feedback, both participants can see
+    each other.
+
+Pose data were recorded at 30 Hz using a ZED stereo camera and processed with
+the ZED body-tracking SDK, yielding 3-D joint positions for 38 keypoints per
+participant per frame.
+"""
 from pathlib import Path
 import re
 from collections import defaultdict
 
-TARGET_RATE = 30.0
+TARGET_RATE = 30.0  # Pose data sampling rate (Hz)
 
 MG_RE = re.compile(r"^(P\d{3})_(T\d+)_((?:P1|P2))_pose_3d\.csv$", re.IGNORECASE)
 

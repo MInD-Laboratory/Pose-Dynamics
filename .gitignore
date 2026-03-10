@@ -4,7 +4,8 @@ figs/
 extra1/
 projects/mirror_game/data/
 projects/mirror_game/results/
-
+projects/Mosaic/data/
+projects/MATB/Measuring_Workload_Dynamics_in_OpenMATB/Pose/data/
 # OS/editor cruft
 .DS_Store
 .vscode/

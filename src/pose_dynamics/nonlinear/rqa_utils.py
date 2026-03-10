@@ -1,4 +1,46 @@
-# pose_dynamics/nonlinear/rqa.py
+"""
+Recurrence Quantification Analysis (RQA) and Cross-RQA (CRQA) wrappers.
+
+This module provides a unified Python interface to the compiled C++ recurrence
+engine (``rqa_utils_cpp``), covering three analysis modes used in the paper:
+
+1. **Auto-RQA** — univariate recurrence analysis of a single time series.
+   The time series is delay-embedded, and a recurrence plot is constructed
+   from the pairwise Euclidean distances in the embedded phase space.
+
+2. **Cross-RQA (CRQA)** — dyadic recurrence analysis between two time series
+   (e.g., two participants in an interaction study).  The cross-recurrence
+   plot captures how often the phase-space trajectories of the two individuals
+   visit the same region simultaneously, yielding coupling measures such as
+   %REC, %DET, and mean-line length.
+
+3. **Multivariate RQA / CRQA** — extends the above to multiple simultaneous
+   dimensions (e.g., all principal-movement scores concatenated), computing
+   distances in the joint phase space without additional delay-embedding.
+
+All three modes share the same parameter structure (``RqaParams`` / ``make_rqa_params``)
+and return the same four-element tuple: ``(td, rs, mats, err_code)``.
+
+Key output fields
+-----------------
+td : dict
+    Time-domain recurrence statistics (recurrence rate, determinism, etc.).
+rs : dict
+    Recurrence-plot statistics including:
+    - ``perc_recur``   : % Recurrence (%REC) — density of recurrent points.
+    - ``perc_determ``  : % Determinism (%DET) — proportion of recurrent points
+                          forming diagonal lines (reflects predictability).
+    - ``entropy``      : Shannon entropy of diagonal-line lengths.
+    - ``laminarity``   : proportion of recurrent points in vertical lines
+                          (reflects intermittency / laminar states).
+    - ``trapping_time``: average vertical-line length (mean laminar-state duration).
+    - ``divergence``   : reciprocal of the longest diagonal line, related to
+                          the maximal Lyapunov exponent.
+mats : dict or None
+    Recurrence-plot matrix (if ``return_mats=True``).
+err_code : int
+    0 = success; non-zero indicates a computation error.
+"""
 from __future__ import annotations
 from typing import Dict, Literal, Tuple, Sequence
 
@@ -22,6 +64,39 @@ def make_rqa_params(
     tw: int = 1,
     minl: int = 2,
 ) -> Dict:
+    """
+    Build an RQA parameter dictionary for use with ``run_rqa`` or ``run_mv_rqa``.
+
+    Parameters
+    ----------
+    eDim : int
+        Embedding dimension (m).  Chosen via False Nearest Neighbours (FNN).
+    tLag : int
+        Time delay τ in frames.  Chosen via Auto Mutual Information (AMI).
+    radius : float
+        Recurrence threshold applied after normalisation.  Two embedded points
+        are considered recurrent if their distance is ≤ radius.
+    norm : str
+        Normalisation applied before embedding: ``"zscore"`` (default) or
+        ``"none"``.
+    rescaleNorm : bool
+        If True, rescale the distance matrix to [0, 1] before thresholding.
+        This makes ``radius`` interpretable as a fraction of the maximum
+        pairwise distance.
+    tw : int
+        Theiler window — number of off-main-diagonal bands excluded when
+        computing line-based statistics to avoid spurious autocorrelation.
+        Set to 0 for cross-RQA (no autocorrelation to suppress).
+    minl : int
+        Minimum diagonal (or vertical) line length counted in %DET, entropy,
+        laminarity, and trapping-time calculations.
+
+    Returns
+    -------
+    dict
+        Parameter dictionary accepted by ``run_rqa``, ``run_mv_rqa``, and
+        the legacy ``autoRQA`` / ``crossRQA`` functions.
+    """
     return {
         "eDim": eDim,
         "tLag": tLag,
