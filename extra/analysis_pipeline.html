@@ -48,7 +48,7 @@
     }
     .stages div {
       padding: 12px 11px;
-      font-size: 12px;
+      font-size: 15px;
       text-transform: uppercase;
       letter-spacing: 0.7px;
       font-weight: 700;
@@ -78,13 +78,13 @@
     }
     .case h2 {
       margin: 0;
-      font-size: 18px;
+      font-size: 20px;
       line-height: 1.1;
     }
     .case p {
       margin: 7px 0 0;
       color: var(--muted);
-      font-size: 13px;
+      font-size: 15px;
     }
 
     .cell {
@@ -107,7 +107,7 @@
     }
     .card p {
       margin: 0;
-      font-size: 13px;
+      font-size: 15px;
       line-height: 1.34;
       color: var(--ink);
     }
@@ -151,7 +151,7 @@
       .cell::before {
         display: block;
         margin: 0 0 5px;
-        font-size: 11px;
+        font-size: 13px;
         text-transform: uppercase;
         letter-spacing: 0.7px;
         font-weight: 700;
@@ -222,7 +222,7 @@
       .arrow {
         display: block !important;
         right: -7px;
-        font-size: 16px;
+        font-size: 18px;
       }
 
       .no-arrow .arrow { display: none !important; }
@@ -244,27 +244,29 @@
     <article class="row">
       <div class="case">
         <h2>Case 1</h2>
-        <p>2D facial pose dynamics</p>
+        <p>2D facial movement dynamics</p>
       </div>
       <div class="cell acq-cell">
         <div class="card acq-card">
-          <p>Single webcam (60 Hz) recording</p>
-          <p>OpenPose of facial keypoints</p>
+          <p>Single webcam video (60 Hz)</p>
+          <p>2D facial keypoints extracted with OpenPose</p>
         </div>
         <span class="arrow">&rarr;</span>
       </div>
       <div class="cell feat-cell">
         <div class="card feat-card">
-          <p>Blink and mouth aperture</p>
-          <p>Pupil and head composites</p>
+          <p>Blink aperture</p>
+          <p>Mouth aperture</p>
+          <p>Pupil displacement</p>
+          <p>Head rotation</p>
         </div>
         <span class="arrow">&rarr;</span>
       </div>
       <div class="cell prep-cell">
         <div class="card prep-card">
-          <p>Confidence mask and interpolation</p>
-          <p>10 Hz low pass filter</p>
-          <p>Global procrustes</p>
+          <p>Confidence masking and linear interpolation</p>
+          <p>10 Hz low-pass filter</p>
+          <p>Frame-wise procrustes alignment</p>
         </div>
         <span class="arrow">&rarr;</span>
       </div>
@@ -277,9 +279,8 @@
       </div>
       <div class="cell rqa-cell no-arrow">
         <div class="card rqa-card">
-          <p>Auto-RQA</p>
-          <p>CRQA</p>
-          <p>m = 4, tau = 20</p>
+          <p>RQA and CRQA</p>
+          <p>(m = 4, tau = 20)</p>
         </div>
       </div>
     </article>
@@ -291,24 +292,24 @@
       </div>
       <div class="cell acq-cell">
         <div class="card acq-card">
-          <p>Dual webcam (60 Hz) recordings</p>
-          <p>OpenPose of face and body keypoints</p>
+          <p>Dual webcam video (60 Hz)</p>
+          <p>2D face and body keypoints extracted with OpenPose</p>
         </div>
         <span class="arrow">&rarr;</span>
       </div>
       <div class="cell feat-cell">
         <div class="card feat-card">
-          <p>Regions of interest: face, upper body, arms</p>
-          <p>Velocity magnitude for each ROI centroid</p>
+          <p>Keypoints grouped into face, upper body, and arms ROIs</p>
+          <p>Velocity magnitude computed for each ROI centroid</p>
         </div>
         <span class="arrow">&rarr;</span>
       </div>
       <div class="cell prep-cell">
         <div class="card prep-card">
-          <p>Confidence mask and interpolation</p>
-          <p>10 Hz low pass filter</p>
+          <p>Confidence masking and linear interpolation</p>
+          <p>10 Hz low-pass filter</p>
           <p>Downsampled to 30 Hz</p>
-          <p>Global procrustes</p>
+          <p>Window-wise procrustes alignment</p>
         </div>
         <span class="arrow">&rarr;</span>
       </div>
@@ -323,7 +324,7 @@
       <div class="cell rqa-cell no-arrow">
         <div class="card rqa-card">
           <p>Windowed CRQA</p>
-          <p>m = 4, tau = 10</p>
+          <p>(m = 4, tau = 10)</p>
         </div>
       </div>
     </article>
@@ -331,26 +332,25 @@
     <article class="row">
       <div class="case">
         <h2>Case 3</h2>
-        <p>3D full body interpersonal dynamics</p>
+        <p>3D full-body interpersonal dynamics</p>
       </div>
       <div class="cell acq-cell">
         <div class="card acq-card">
-          <p>Two stereo ZED (60 Hz) recordings</p>
+          <p>Two ZED stereo camera recordings (60 Hz)</p>
           <p>3D skeleton model with 38 keypoints</p>
         </div>
         <span class="arrow">&rarr;</span>
       </div>
       <div class="cell feat-cell">
         <div class="card feat-card">
-          <p>38 keypoints tracked</p>
-          <p>5 keypoints selected: head, left/right wrists, left/right ankles</p>
+          <p>Five keypoints selected: head, left/right wrists, left/right ankles</p>
         </div>
         <span class="arrow">&rarr;</span>
       </div>
       <div class="cell prep-cell">
         <div class="card prep-card">
-          <p>Centering and rigid alignment</p>
-          <p>5 Hz low pass filter</p>
+          <p>Spatial centering and rigid-body alignment</p>
+          <p>5 Hz low-pass filter</p>
           <p>Resampled to 30 Hz</p>
         </div>
         <span class="arrow">&rarr;</span>
@@ -366,8 +366,8 @@
       </div>
       <div class="cell rqa-cell no-arrow">
         <div class="card rqa-card">
-          <p>CRQA per keypoint pair</p>
-          <p>Fixed RR = 2.5%</p>
+          <p>CRQA for each matched keypoint pair</p>
+          <p>(fixed RR = 2.5%)</p>
         </div>
       </div>
     </article>
