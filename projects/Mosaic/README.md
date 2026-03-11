@@ -25,7 +25,7 @@ Run them in the order listed below.
 
 | Step | Notebook | Description |
 |------|----------|-------------|
-| 1 | `analysis_pipeline.ipynb` | Preprocessing, Procrustes alignment, linear feature extraction and windowed CRQA |
+| 1 | `analysis_pipeline.ipynb` | Preprocessing, Region of Interest extraction, Procrustes alignment, linear feature extraction and windowed CRQA |
 | 2 | `mixed_effects_models.ipynb` | Linear mixed-effects models testing the effect of experimental condition on recurrence and kinematic measures |
 | 3 | `visualisation.ipynb` | Visualisations for for the recurrence and kinematic results |
 
