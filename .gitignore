@@ -51,3 +51,4 @@ projects/Mosaic/notebooks/cache_roi_windows/
 
 # Extra scripts
 projects/Mosaic/extras/
+osf_upload.py

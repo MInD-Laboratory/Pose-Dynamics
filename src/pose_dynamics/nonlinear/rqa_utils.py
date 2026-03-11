@@ -46,8 +46,8 @@ from typing import Dict, Literal, Tuple, Sequence
 
 import numpy as np
 
-from pose_dynamics.rqa.utils import norm_utils
-from pose_dynamics.rqa.utils import rqa_utils_cpp # C++ backend
+from pose_dynamics.rqa_submodule.utils import norm_utils
+from pose_dynamics.rqa_submodule.utils import rqa_utils_cpp # C++ backend
 
 RqaMode = Literal["auto", "cross"]
 
