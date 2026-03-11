@@ -5,8 +5,22 @@ Dataset-specific constants, keypoint mappings, and analysis parameters
 for the MOSAIC dyadic pose dynamics study.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+
+# ============================================================================
+# FIND REPO ROOT
+# ============================================================================
+def _find_repo_root() -> Path:
+    """Walk up from this file to find the repo root."""
+    current = Path(__file__).resolve().parent
+    for parent in [current] + list(current.parents):
+        if (parent / "pyproject.toml").exists() or (parent / "data").exists():
+            return parent
+    return current  # fallback
+
+REPO_ROOT = _find_repo_root()
+DATA_PATH = REPO_ROOT / "data" / "Mosaic"
 
 # ============================================================================
 # DATASET CONSTANTS
@@ -168,8 +182,8 @@ OUTPUT_DIRS = {
 class MOSAICConfig:
     """Main configuration for MOSAIC analysis."""
     
-    # Data paths (to be set by user)
-    data_path: str = "D:/mosaic analysis files"
+    # Data paths (auto-detected from repo root)
+    data_path: Path = field(default_factory=lambda: DATA_PATH)
     
     # Processing parameters
     fps: float = TARGET_RATE
