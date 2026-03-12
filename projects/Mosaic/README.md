@@ -10,11 +10,9 @@ using linear kinematics and Cross-Recurrence Quantification Analysis (CRQA).
 
 ## Data
 
-Raw data are available at the joint Open Science Framework (OSF) repository:
-**https://osf.io/bauqs**
+The data from case study 2 can be found here: **https://osf.io/3a59k** under `raw data/study2`. Please note that there are 6 files that were not included in the full publication, but are included in the analyses for this repository. These can be found at **https://osf.io/bauq** under `Case_Study_2_Mosaic`.
 
-Place the downloaded data such that the path set in `config.py` (`data_path`) points
-to the directory containing per-session CSV files.  Each CSV contains per-frame
+Place the downloaded data in the project root at `data\Mosaic`. Alteratively, update the `DATA_PATH` in the [analysis notebook](notebooks/1_analysis_pipeline.ipynb). Each CSV contains per-frame
 OpenPose keypoint coordinates with columns of the form
 `<KeypointName>_x_offset`, `<KeypointName>_y_offset`, `<KeypointName>_confidence`.
 
@@ -31,7 +29,7 @@ Run them in the order listed below.
 
 ### Step 1 — Preprocessing and Feature Extraction
 
-Raw keypoint data are preprocessed in the following order:
+Raw keypoint data are preprocessed using the following steps:
 
 1. **Confidence masking** — keypoints with detection confidence below 0.3 are set to
    NaN.  This removes frames in which the pose estimator was uncertain about the
@@ -49,7 +47,7 @@ Raw keypoint data are preprocessed in the following order:
    differences in position and orientation do not confound movement measures.
 7. **Windowed feature extraction** — for each 60-second overlapping window (50 % overlap):
    - *Linear kinematics*: RMS position, mean and SD of velocity magnitude.
-   - *CRQA*: %REC, %DET, entropy, laminarity, trapping time, and divergence computed on each ROI.
+   - *CRQA*: Metrics including %REC, %DET, entropy, and laminarity computed on each ROI.
 
 ### Step 2 — Statistical Modelling
 

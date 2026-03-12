@@ -61,8 +61,12 @@ principal movements, and analysed with Cross-RQA and multivariate CRQA.
 
 ## Data Availability
 
-Data for the Mirror Game and MOSAIC case studies are available at:
-**https://osf.io/bauqs**
+Data for the MATB case study is available at: **https://osf.io/dzgsv** 
+
+Data for the MOSAIC case study is available at: **https://osf.io/3a59k** under `raw data/study2`. Please note that there are 6 files not included in the full publication, but that were included in the analyses found in this notebook. These are available here: **https://osf.io/dzgsv** under `Case_Study_2_Mosaic`.
+
+Data for the Mirror Game case study is available at:
+**https://osf.io/bauqs** under `Case_Study_3_Mirror_Game`.
 
 Download and place each dataset in the corresponding `data/raw/` directory before
 running the notebooks (see each case study README for the expected layout).
