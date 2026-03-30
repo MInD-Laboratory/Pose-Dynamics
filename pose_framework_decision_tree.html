@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pose Analysis Quick Guide</title>
+  <style>
+    :root {
+      --bg: #f4efe6;
+      --panel: #fffaf2;
+      --panel-strong: #fff4e2;
+      --ink: #18222d;
+      --muted: #5f6b76;
+      --line: #d6c5aa;
+      --accent: #a3472f;
+      --accent-soft: #efd4b7;
+      --analysis: #2f6c63;
+      --analysis-soft: #d9eee9;
+      --decision: #815c1b;
+      --shadow: 0 18px 40px rgba(24, 34, 45, 0.08);
+      --radius: 22px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(163, 71, 47, 0.14), transparent 28%),
+        radial-gradient(circle at top right, rgba(47, 108, 99, 0.14), transparent 24%),
+        linear-gradient(180deg, #f7f1e8 0%, var(--bg) 100%);
+    }
+
+    .page {
+      width: min(1280px, calc(100% - 32px));
+      margin: 24px auto 48px;
+    }
+
+    .hero {
+      position: relative;
+      overflow: hidden;
+      padding: 32px;
+      border: 1px solid rgba(24, 34, 45, 0.08);
+      border-radius: calc(var(--radius) + 6px);
+      background:
+        linear-gradient(135deg, rgba(255, 255, 255, 0.86), rgba(255, 247, 235, 0.94)),
+        linear-gradient(120deg, rgba(163, 71, 47, 0.10), rgba(47, 108, 99, 0.08));
+      box-shadow: var(--shadow);
+    }
+
+    .hero::after {
+      content: "";
+      position: absolute;
+      inset: auto -60px -90px auto;
+      width: 240px;
+      height: 240px;
+      border-radius: 50%;
+      background: rgba(163, 71, 47, 0.08);
+      filter: blur(8px);
+    }
+
+    h1, h2, h3, p {
+      margin: 0;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+      padding: 8px 14px;
+      border-radius: 999px;
+      background: rgba(24, 34, 45, 0.06);
+      color: var(--muted);
+      font-size: 0.9rem;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+    }
+
+    .hero h1 {
+      max-width: 14ch;
+      font-size: clamp(2.2rem, 4vw, 4.3rem);
+      line-height: 0.95;
+      letter-spacing: -0.04em;
+      margin-bottom: 16px;
+    }
+
+    .hero p {
+      max-width: 70ch;
+      font-size: 1.05rem;
+      line-height: 1.6;
+      color: var(--muted);
+    }
+
+    .tree {
+      position: relative;
+      margin-top: 28px;
+      padding-left: 26px;
+    }
+
+    .tree::before {
+      content: "";
+      position: absolute;
+      left: 8px;
+      top: 0;
+      bottom: 0;
+      width: 4px;
+      border-radius: 999px;
+      background: linear-gradient(180deg, var(--accent), rgba(129, 92, 27, 0.35), var(--analysis));
+    }
+
+    .stage {
+      position: relative;
+      margin: 0 0 26px;
+      padding: 26px 24px 24px;
+      border-radius: var(--radius);
+      border: 1px solid rgba(24, 34, 45, 0.08);
+      background: rgba(255, 250, 242, 0.94);
+      box-shadow: var(--shadow);
+    }
+
+    .stage::before {
+      content: "";
+      position: absolute;
+      left: -24px;
+      top: 34px;
+      width: 24px;
+      height: 4px;
+      border-radius: 999px;
+      background: var(--line);
+    }
+
+    .stage-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: end;
+      justify-content: space-between;
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+
+    .stage-tag {
+      display: inline-block;
+      margin-bottom: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: var(--panel-strong);
+      color: var(--decision);
+      font-size: 0.84rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      font-weight: 700;
+    }
+
+    .stage h2 {
+      font-size: clamp(1.5rem, 2vw, 2rem);
+      margin-bottom: 8px;
+    }
+
+    .stage .prompt {
+      max-width: 62ch;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+
+    .branches {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 16px;
+    }
+
+    .card {
+      position: relative;
+      padding: 18px;
+      border-radius: 18px;
+      background: var(--panel);
+      border: 1px solid rgba(24, 34, 45, 0.08);
+      min-height: 100%;
+    }
+
+    .card::before {
+      content: "";
+      position: absolute;
+      left: 18px;
+      top: 0;
+      width: 64px;
+      height: 4px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, var(--accent), rgba(163, 71, 47, 0.05));
+    }
+
+    .card.analysis::before {
+      background: linear-gradient(90deg, var(--analysis), rgba(47, 108, 99, 0.05));
+    }
+
+    .card h3 {
+      margin-top: 8px;
+      margin-bottom: 10px;
+      font-size: 1.08rem;
+    }
+
+    .card p {
+      color: var(--muted);
+      line-height: 1.5;
+      margin-bottom: 12px;
+    }
+
+    .badge {
+      display: inline-block;
+      margin-bottom: 10px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+
+    .analysis .badge {
+      background: var(--analysis-soft);
+      color: var(--analysis);
+    }
+
+    .checklist {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      display: grid;
+      gap: 8px;
+      color: var(--ink);
+    }
+
+    .checklist li {
+      padding-left: 18px;
+      position: relative;
+      line-height: 1.45;
+    }
+
+    .checklist li::before {
+      content: "•";
+      position: absolute;
+      left: 0;
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    .analysis .checklist li::before {
+      color: var(--analysis);
+    }
+
+    .bridge {
+      margin: 16px 0 22px;
+      padding: 16px 18px;
+      border-radius: 16px;
+      background: linear-gradient(90deg, rgba(239, 212, 183, 0.65), rgba(217, 238, 233, 0.65));
+      border: 1px solid rgba(24, 34, 45, 0.08);
+      color: var(--ink);
+      line-height: 1.55;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .metric-box {
+      padding: 14px;
+      border-radius: 16px;
+      background: white;
+      border: 1px solid rgba(24, 34, 45, 0.08);
+    }
+
+    .metric-box strong {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 0.95rem;
+    }
+
+    code {
+      font-family: "Consolas", "SFMono-Regular", monospace;
+      font-size: 0.93em;
+    }
+
+    @media (max-width: 720px) {
+      .page {
+        width: min(100% - 18px, 1280px);
+        margin-top: 10px;
+      }
+
+      .hero,
+      .stage {
+        padding: 22px 18px;
+      }
+
+      .tree {
+        padding-left: 18px;
+      }
+
+      .stage::before {
+        left: -16px;
+        width: 16px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="hero">
+      <div class="eyebrow">Pose Analysis Framework</div>
+      <h1>Pose Analysis Quick Guide</h1>
+      <p>
+        This quick guide walks through the main stages of pose analysis, from acquisition and feature
+        selection through pre-processing and analysis. It is designed to help readers identify common
+        options at each stage and choose an approach that fits their data and research question.
+      </p>
+    </section>
+
+    <section class="tree">
+      <article class="stage">
+        <div class="stage-head">
+          <div>
+            <div class="stage-tag">Stage 1</div>
+            <h2>Acquisition</h2>
+            <p class="prompt">
+              Start by asking what kind of movement you need to capture and whether the recording supports
+              stable temporal analysis.
+            </p>
+          </div>
+        </div>
+        <div class="branches">
+          <section class="card">
+            <div class="badge">Choose Source</div>
+            <h3>Marker-based or markerless?</h3>
+            <p>Both can feed the same pipeline as long as the output is frame-wise landmark trajectories.</p>
+            <ul class="checklist">
+              <li><strong>Marker-based:</strong> higher spatial precision, more setup burden.</li>
+              <li><strong>Markerless video:</strong> more scalable and naturalistic, but noisier and more prone to occlusion.</li>
+            </ul>
+          </section>
+
+          <section class="card">
+            <div class="badge">Sampling</div>
+            <h3>Is the frame rate constant?</h3>
+            <p>Recurrence assumes a fixed temporal unit for delay embedding.</p>
+            <ul class="checklist">
+              <li><strong>Yes:</strong> proceed directly to feature selection.</li>
+              <li><strong>No:</strong> store timestamps and plan to resample during preprocessing.</li>
+            </ul>
+          </section>
+
+          <section class="card">
+            <div class="badge">Geometry</div>
+            <h3>2D single camera or 3D reconstruction?</h3>
+            <p>Choose the spatial representation that fits the question and the acceptable artifact profile.</p>
+            <ul class="checklist">
+              <li><strong>2D:</strong> simpler and lighter, but sensitive to viewpoint and orientation.</li>
+              <li><strong>3D:</strong> reduces perspective distortion, but adds reconstruction noise and dimensionality.</li>
+            </ul>
+          </section>
+        </div>
+      </article>
+
+      <article class="stage">
+        <div class="stage-head">
+          <div>
+            <div class="stage-tag">Stage 2</div>
+            <h2>Feature Selection</h2>
+            <p class="prompt">
+              The next choice is what time series should represent movement. This decision is a tradeoff
+              between anatomical specificity, redundancy reduction, and theoretical interpretability.
+            </p>
+          </div>
+        </div>
+        <div class="branches">
+          <section class="card">
+            <div class="badge">Option A</div>
+            <h3>Raw coordinates</h3>
+            <p>Keep <code>(x, y)</code> or <code>(x, y, z)</code> trajectories when specific landmarks are the unit of interest.</p>
+            <ul class="checklist">
+              <li>Best for localized movement questions.</li>
+              <li>Preserves anatomical specificity.</li>
+              <li>Carries more redundancy across nearby landmarks.</li>
+            </ul>
+          </section>
+
+          <section class="card">
+            <div class="badge">Option B</div>
+            <h3>Magnitude vectors</h3>
+            <p>Collapse frame-to-frame movement into orientation-agnostic displacement magnitude.</p>
+            <ul class="checklist">
+              <li>Useful when direction matters less than amplitude.</li>
+              <li>Reduces axis redundancy.</li>
+              <li>Sacrifices directional information.</li>
+            </ul>
+          </section>
+
+          <section class="card">
+            <div class="badge">Option C</div>
+            <h3>Derived kinematic features</h3>
+            <p>Create theoretically guided signals from landmark pairs or groups.</p>
+            <ul class="checklist">
+              <li>Examples: blink aperture, lip opening, joint distances, head rotation.</li>
+              <li>Most interpretable when guided by domain knowledge.</li>
+              <li>Selective by design, so they only sample part of the movement space.</li>
+            </ul>
+          </section>
+
+          <section class="card">
+            <div class="badge">Optional Lens</div>
+            <h3>Regional pooling or PCA</h3>
+            <p>Use pooled regions or PCA to summarize coordinated structure.</p>
+            <ul class="checklist">
+              <li>Helpful for dimensionality reduction and diagnostics.</li>
+              <li>Good for inspecting dominant movement modes.</li>
+              <li>PCA is best used to examine spatial structure, not as a default precursor to recurrence.</li>
+            </ul>
+          </section>
+        </div>
+      </article>
+
+      <article class="stage">
+        <div class="stage-head">
+          <div>
+            <div class="stage-tag">Stage 3</div>
+            <h2>Pre-processing</h2>
+            <p class="prompt">
+              The next step is to clean and standardize the pose data so it is ready for downstream analysis.
+            </p>
+          </div>
+        </div>
+        <div class="branches">
+          <section class="card">
+            <div class="badge">Missing Data</div>
+            <h3>How much interpolation is safe?</h3>
+            <p>For recurrence analyses, interpolate short gaps only.</p>
+            <ul class="checklist">
+              <li>Preferred rule: keep gap length below <code>Lmax = (m - 1)&tau;</code>.</li>
+              <li>Short gaps can be linearly interpolated.</li>
+              <li>Long gaps should remain missing or be excluded at the window level.</li>
+            </ul>
+          </section>
+
+          <section class="card">
+            <div class="badge">Alignment</div>
+            <h3>Do camera geometry and pose orientation vary?</h3>
+            <p>If yes, align trajectories into a shared coordinate system before analysis.</p>
+            <ul class="checklist">
+              <li>Use translation, rotation, and optional scaling via Procrustes.</li>
+              <li>Template can be global, reference-frame based, or synthetic.</li>
+              <li>Visually inspect raw versus aligned poses to verify the transform.</li>
+            </ul>
+          </section>
+
+          <section class="card">
+            <div class="badge">Signal Cleaning</div>
+            <h3>Do you need filtering or detrending?</h3>
+            <p>Only apply these when they remove artifacts more than they distort the temporal pattern.</p>
+            <ul class="checklist">
+              <li>Low-pass filtering reduces jitter from pose tracking noise.</li>
+              <li>Detrending helps when drift is clearly nuisance variance.</li>
+              <li>Windowing becomes essential once longer recordings become nonstationary.</li>
+            </ul>
+          </section>
+
+          <section class="card">
+            <div class="badge">Normalization</div>
+            <h3>Is amplitude theoretically meaningful?</h3>
+            <p>Choose scaling based on whether you want to preserve movement size or focus on structure.</p>
+            <ul class="checklist">
+              <li><strong>Z-score:</strong> best when amplitude is nuisance variance.</li>
+              <li><strong>Unit interval:</strong> keeps within-signal proportional structure.</li>
+              <li><strong>No heavy normalization:</strong> keep scale when absolute magnitude is the real signal.</li>
+            </ul>
+          </section>
+        </div>
+
+        <div class="bridge">
+          Now it's time to select an analysis method:
+          <strong>Do you want to know how much movement occurred, how movement is coordinated in space, or how movement unfolds over time?</strong>
+          The first two point toward linear metrics; the last points toward recurrence.
+        </div>
+      </article>
+
+      <article class="stage">
+        <div class="stage-head">
+          <div>
+            <div class="stage-tag">Stage 4A</div>
+            <h2>Linear Metrics</h2>
+            <p class="prompt">
+              Linear analyses quantify movement magnitude and dominant movement modes. They are useful as a first pass
+              and as context for interpreting recurrence findings.
+            </p>
+          </div>
+        </div>
+        <div class="branches">
+          <section class="card analysis">
+            <div class="badge">Amplitude</div>
+            <h3>Movement magnitude summaries</h3>
+            <p>Use direct kinematic summaries when the question is about how much movement happened.</p>
+            <ul class="checklist">
+              <li>RMS displacement</li>
+              <li>Mean velocity and acceleration</li>
+              <li>Standard deviation of velocity or acceleration</li>
+              <li>Velocity or acceleration magnitude for direction-free summaries</li>
+            </ul>
+          </section>
+
+          <section class="card analysis">
+            <div class="badge">Pooling</div>
+            <h3>Region-level summaries</h3>
+            <p>Aggregate landmark-wise metrics when a region is more meaningful than any single point.</p>
+            <ul class="checklist">
+              <li>Pool by hands, arms, face, or whole-body subsets.</li>
+              <li>Useful for comparing tasks or conditions at the ROI level.</li>
+              <li>Works well alongside windowed recurrence outputs.</li>
+            </ul>
+          </section>
+
+          <section class="card analysis">
+            <div class="badge">Structure</div>
+            <h3>PCA for coordinated movement</h3>
+            <p>Use PCA to reveal principal movement patterns and to diagnose preprocessing quality.</p>
+            <ul class="checklist">
+              <li>Great for spatial covariance and dominant postural modes.</li>
+              <li>Can be computed at the individual or group level.</li>
+            </ul>
+          </section>
+        </div>
+
+        <div class="metrics">
+          <div class="metric-box">
+            <strong>Best when</strong>
+            Comparing movement amount, speed, or variability across conditions.
+          </div>
+          <div class="metric-box">
+            <strong>Strength</strong>
+            Interpretable and easy to link to task manipulation.
+          </div>
+          <div class="metric-box">
+            <strong>Limitation</strong>
+            Two signals can share the same amplitude statistics but differ in temporal organization.
+          </div>
+        </div>
+      </article>
+
+      <article class="stage">
+        <div class="stage-head">
+          <div>
+            <div class="stage-tag">Stage 4B</div>
+            <h2>Recurrence</h2>
+            <p class="prompt">
+              Recurrence methods answer the temporal question: when does a system return to similar states, and how
+              are those returns organized over time?
+            </p>
+          </div>
+        </div>
+        <div class="branches">
+          <section class="card analysis">
+            <div class="badge">Mode</div>
+            <h3>Choose the recurrence type</h3>
+            <p>Select the mode that matches the unit of analysis.</p>
+            <ul class="checklist">
+              <li><strong>Auto-RQA:</strong> one signal or one participant over time.</li>
+              <li><strong>Cross-RQA:</strong> two signals or two interactants in shared dynamics.</li>
+              <li><strong>Multidimensional RQA:</strong> multiple signals treated as one system.</li>
+            </ul>
+          </section>
+
+          <section class="card analysis">
+            <div class="badge">Embedding</div>
+            <h3>Set state-space parameters</h3>
+            <p>Delay embedding reconstructs the trajectory before recurrence is computed.</p>
+            <ul class="checklist">
+              <li><strong>Delay &tau;:</strong> estimate with AMI and test plausible ranges rather than relying on a single value.</li>
+              <li><strong>Dimension m:</strong> estimate with FNN; movement studies often converge around 3 to 5.</li>
+              <li>Check robustness across a small parameter grid.</li>
+            </ul>
+          </section>
+
+          <section class="card analysis">
+            <div class="badge">Detection</div>
+            <h3>Define what counts as recurrence</h3>
+            <p>Threshold and safeguards determine the density and interpretability of the recurrence plot.</p>
+            <ul class="checklist">
+              <li><strong>Radius &epsilon;:</strong> fixed threshold or tuned to target RR, often around 2 to 5% recurrence.</li>
+              <li><strong>Rescaling:</strong> mean-rescaled distances help compare across heterogeneous signals.</li>
+              <li><strong>Theiler window:</strong> mainly for auto-RQA to suppress trivial temporal neighbors.</li>
+              <li><strong>Minimum line length:</strong> pilot values to avoid artificially inflated determinism.</li>
+            </ul>
+          </section>
+
+          <section class="card analysis">
+            <div class="badge">Windowing</div>
+            <h3>Track changes through time</h3>
+            <p>Long recordings usually need sliding windows so shifts in coordination are not averaged away.</p>
+            <ul class="checklist">
+              <li>Typical windows often span tens of seconds to a few minutes.</li>
+              <li>Fifty percent overlap is a common default.</li>
+              <li>Use the same window scheme across participants and conditions.</li>
+            </ul>
+          </section>
+
+          <section class="card analysis">
+            <div class="badge">Outputs</div>
+            <h3>Read the main metrics together</h3>
+            <p>No single RQA metric tells the whole story, so interpret density and structure jointly.</p>
+            <ul class="checklist">
+              <li><strong>RR / %REC:</strong> how often states recur.</li>
+              <li><strong>DET:</strong> how predictable the repeated sequences are.</li>
+              <li><strong>Entropy:</strong> complexity of line-length structure.</li>
+              <li><strong>LAM and trapping time:</strong> stability and dwelling.</li>
+            </ul>
+          </section>
+        </div>
+
+        <div class="metrics">
+          <div class="metric-box">
+            <strong>Best when</strong>
+            Investigating temporal organization, stability, coupling, or repeated movement patterns over time.
+          </div>
+          <div class="metric-box">
+            <strong>Strengths</strong>
+            Captures nonlinear and nonstationary structure that amplitude-based summaries can miss.
+          </div>
+          <div class="metric-box">
+            <strong>Limitations</strong>
+            Sensitive to choices about embedding, thresholds, and windowing, so parameter checks are important.
+          </div>
+        </div>
+      </article>
+    </section>
+  </main>
+</body>
+</html>
