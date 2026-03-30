@@ -357,22 +357,22 @@
           </section>
 
           <section class="card">
-            <div class="badge">Sampling</div>
-            <h3>Is the frame rate constant?</h3>
-            <p>Recurrence assumes a fixed temporal unit for delay embedding.</p>
-            <ul class="checklist">
-              <li><strong>Yes:</strong> proceed directly to feature selection.</li>
-              <li><strong>No:</strong> store timestamps and plan to resample during preprocessing.</li>
-            </ul>
-          </section>
-
-          <section class="card">
             <div class="badge">Geometry</div>
             <h3>2D single camera or 3D reconstruction?</h3>
             <p>Choose the spatial representation that fits the question and the acceptable artifact profile.</p>
             <ul class="checklist">
               <li><strong>2D:</strong> simpler and lighter, but sensitive to viewpoint and orientation.</li>
               <li><strong>3D:</strong> reduces perspective distortion, but adds reconstruction noise and dimensionality.</li>
+            </ul>
+          </section>
+
+          <section class="card">
+            <div class="badge">Sampling</div>
+            <h3>Is the frame rate constant?</h3>
+            <p>Recurrence assumes a fixed temporal unit for delay embedding.</p>
+            <ul class="checklist">
+              <li><strong>Yes:</strong> proceed directly to feature selection.</li>
+              <li><strong>No:</strong> store timestamps and plan to resample during preprocessing.</li>
             </ul>
           </section>
         </div>
@@ -424,13 +424,13 @@
           </section>
 
           <section class="card">
-            <div class="badge">Optional Lens</div>
-            <h3>Regional pooling or PCA</h3>
-            <p>Use pooled regions or PCA to summarize coordinated structure.</p>
+            <div class="badge">Option D</div>
+            <h3>Regional pooling</h3>
+            <p>Group landmarks into broader regions.</p>
             <ul class="checklist">
-              <li>Helpful for dimensionality reduction and diagnostics.</li>
-              <li>Good for inspecting dominant movement modes.</li>
-              <li>PCA is best used to examine spatial structure, not as a default precursor to recurrence.</li>
+              <li>Examples include the face, arms, hands, or whole-body subsets.</li>
+              <li>Useful when a regional summary is more meaningful than individual landmarks.</li>
+              <li>Can simplify both linear and recurrence-based analyses by reducing feature complexity.</li>
             </ul>
           </section>
         </div>
@@ -521,8 +521,8 @@
         </div>
         <div class="branches">
           <section class="card analysis">
-            <div class="badge">Amplitude</div>
-            <h3>Movement magnitude summaries</h3>
+            <div class="badge">Individual</div>
+            <h3>Amplitude-based movement summaries</h3>
             <p>Use direct kinematic summaries when the question is about how much movement happened.</p>
             <ul class="checklist">
               <li>RMS displacement</li>
@@ -533,19 +533,19 @@
           </section>
 
           <section class="card analysis">
-            <div class="badge">Pooling</div>
-            <h3>Region-level summaries</h3>
-            <p>Aggregate landmark-wise metrics when a region is more meaningful than any single point.</p>
+            <div class="badge">Dyadic</div>
+            <h3>Cross-correlation based movement summaries</h3>
+            <p>Use paired linear measures when the question is about how two people covary over time.</p>
             <ul class="checklist">
-              <li>Pool by hands, arms, face, or whole-body subsets.</li>
-              <li>Useful for comparing tasks or conditions at the ROI level.</li>
-              <li>Works well alongside windowed recurrence outputs.</li>
+              <li>Cross-correlation or lagged correlation between matched individual signals.</li>
+              <li>Useful for asking whether partners speed up, slow down, or fluctuate together.</li>
+              <li>Best interpreted alongside the individual movement summaries above.</li>
             </ul>
           </section>
 
           <section class="card analysis">
             <div class="badge">Structure</div>
-            <h3>PCA for coordinated movement</h3>
+            <h3>Principal Components Analysis</h3>
             <p>Use PCA to reveal principal movement patterns and to diagnose preprocessing quality.</p>
             <ul class="checklist">
               <li>Great for spatial covariance and dominant postural modes.</li>
@@ -560,11 +560,11 @@
             Comparing movement amount, speed, or variability across conditions.
           </div>
           <div class="metric-box">
-            <strong>Strength</strong>
+            <strong>Strengths</strong>
             Interpretable and easy to link to task manipulation.
           </div>
           <div class="metric-box">
-            <strong>Limitation</strong>
+            <strong>Limitations</strong>
             Two signals can share the same amplitude statistics but differ in temporal organization.
           </div>
         </div>
@@ -583,7 +583,7 @@
         </div>
         <div class="branches">
           <section class="card analysis">
-            <div class="badge">Mode</div>
+            <div class="badge">Type</div>
             <h3>Choose the recurrence type</h3>
             <p>Select the mode that matches the unit of analysis.</p>
             <ul class="checklist">
