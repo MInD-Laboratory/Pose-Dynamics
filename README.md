@@ -8,7 +8,7 @@ The paper demonstrates how recurrence quantification analysis (RQA) and related
 nonlinear time-series methods can be applied to body-pose data to capture movement
 structure that is invisible to conventional linear (mean/variance) summaries.
 
-A quick guide of the analysis framework is available 👉 (HERE!](https://htmlpreview.github.io/?https://github.com/MInD-Laboratory/Pose-Dynamics/blob/main/guide.html)
+A quick guide of the analysis framework is available 👉 [HERE!](https://htmlpreview.github.io/?https://github.com/MInD-Laboratory/Pose-Dynamics/blob/main/guide.html)
 
 ## Repository Structure
 
