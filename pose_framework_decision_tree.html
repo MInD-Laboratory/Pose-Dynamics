@@ -173,6 +173,10 @@
       gap: 16px;
     }
 
+    .branches.preprocess-grid {
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+    }
+
     .card {
       position: relative;
       padding: 18px;
@@ -309,6 +313,12 @@
         width: 16px;
       }
     }
+
+    @media (max-width: 1180px) {
+      .branches.preprocess-grid {
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      }
+    }
   </style>
 </head>
 <body>
@@ -436,7 +446,7 @@
             </p>
           </div>
         </div>
-        <div class="branches">
+        <div class="branches preprocess-grid">
           <section class="card">
             <div class="badge">Missing Data</div>
             <h3>How much interpolation is safe?</h3>
@@ -466,7 +476,6 @@
             <ul class="checklist">
               <li>Low-pass filtering reduces jitter from pose tracking noise.</li>
               <li>Detrending helps when drift is clearly nuisance variance.</li>
-              <li>Windowing becomes essential once longer recordings become nonstationary.</li>
             </ul>
           </section>
 
@@ -478,6 +487,16 @@
               <li><strong>Z-score:</strong> best when amplitude is nuisance variance.</li>
               <li><strong>Unit interval:</strong> keeps within-signal proportional structure.</li>
               <li><strong>No heavy normalization:</strong> keep scale when absolute magnitude is the real signal.</li>
+            </ul>
+          </section>
+
+          <section class="card">
+            <div class="badge">Windowing</div>
+            <h3>Should the data be segmented over time?</h3>
+            <p>Windowing helps when movement changes over the course of a recording and a single summary would hide that structure.</p>
+            <ul class="checklist">
+              <li>Useful for longer, nonstationary recordings.</li>
+              <li>Lets downstream analyses track temporal change rather than collapse across a whole trial.</li>
             </ul>
           </section>
         </div>
@@ -594,17 +613,6 @@
               <li><strong>Rescaling:</strong> mean-rescaled distances help compare across heterogeneous signals.</li>
               <li><strong>Theiler window:</strong> mainly for auto-RQA to suppress trivial temporal neighbors.</li>
               <li><strong>Minimum line length:</strong> pilot values to avoid artificially inflated determinism.</li>
-            </ul>
-          </section>
-
-          <section class="card analysis">
-            <div class="badge">Windowing</div>
-            <h3>Track changes through time</h3>
-            <p>Long recordings usually need sliding windows so shifts in coordination are not averaged away.</p>
-            <ul class="checklist">
-              <li>Typical windows often span tens of seconds to a few minutes.</li>
-              <li>Fifty percent overlap is a common default.</li>
-              <li>Use the same window scheme across participants and conditions.</li>
             </ul>
           </section>
 
