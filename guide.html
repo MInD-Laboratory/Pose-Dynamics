@@ -340,7 +340,7 @@
             <div class="stage-tag">Stage 1</div>
             <h2>Acquisition</h2>
             <p class="prompt">
-              Start by asking what kind of movement you need to capture and whether the recording supports
+              Start by asking what kind of movement you want to capture and whether the recording supports
               stable temporal analysis.
             </p>
           </div>
@@ -359,7 +359,7 @@
           <section class="card">
             <div class="badge">Geometry</div>
             <h3>2D single camera or 3D reconstruction?</h3>
-            <p>Choose the spatial representation that fits the question and the acceptable artifact profile.</p>
+            <p>Most researchers will have access to 2D video data but may want to consider 3D reconstruction.</p>
             <ul class="checklist">
               <li><strong>2D:</strong> simpler and lighter, but sensitive to viewpoint and orientation.</li>
               <li><strong>3D:</strong> reduces perspective distortion, but adds reconstruction noise and dimensionality.</li>
@@ -384,9 +384,9 @@
             <div class="stage-tag">Stage 2</div>
             <h2>Feature Selection</h2>
             <p class="prompt">
-              The next choice is what time series should represent movement. This decision is a tradeoff
-              between anatomical specificity, redundancy reduction, and theoretical interpretability.
+              The next choice is what time series should represent movement. The aim is to balance anatomical specificity, reduced redundancy, and interpretability.
             </p>
+
           </div>
         </div>
         <div class="branches">
@@ -618,15 +618,15 @@
 
           <section class="card analysis">
             <div class="badge">Outputs</div>
-            <h3>Read the main metrics together</h3>
-            <p>No single RQA metric tells the whole story, so interpret density and structure jointly.</p>
-            <ul class="checklist">
-              <li><strong>RR / %REC:</strong> how often states recur.</li>
-              <li><strong>DET:</strong> how predictable the repeated sequences are.</li>
-              <li><strong>Entropy:</strong> complexity of line-length structure.</li>
-              <li><strong>LAM and trapping time:</strong> stability and dwelling.</li>
-            </ul>
-          </section>
+            <h3>Interpret the metrics</h3>
+            <p>RQA returns metrics that capture different aspects of the recurrence structure. Commonly used metrics include:</p>
+              <ul class="checklist">
+                <li><strong>RR / %REC:</strong> how often states recur.</li>
+                <li><strong>DET:</strong> how predictable the repeated sequences are.</li>
+                <li><strong>Lmax:</strong> the longest diagonal line, reflecting the most sustained repeated sequence.</li>
+                <li><strong>Entropy:</strong> complexity of line-length structure.</li>
+              </ul>
+            </section>
         </div>
 
         <div class="metrics">
