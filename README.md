@@ -9,6 +9,7 @@ nonlinear time-series methods can be applied to body-pose data to capture moveme
 structure that is invisible to conventional linear (mean/variance) summaries.
 
 A quick guide of the analysis framework is available 👉 [HERE!](https://htmlpreview.github.io/?https://github.com/MInD-Laboratory/Pose-Dynamics/blob/main/guide.html)
+Supplementary material accompanying the paper can be found at: [pose_methods_supp_mat.pdf](https://raw.githubusercontent.com/MInD-Laboratory/Pose-Dynamics/main/pose_methods_supp_mat.pdf).
 
 ## Repository Structure
 
@@ -65,7 +66,7 @@ principal movements, and analysed with Cross-RQA and multivariate CRQA.
 
 Data for the MATB case study is available at: **https://osf.io/dzgsv** 
 
-Data for the MOSAIC case study is available at: **https://osf.io/3a59k** under `raw data/study2`. Please note that there are 6 files not included in the full publication, but that were included in the analyses found in this notebook. These are available here: **https://osf.io/dzgsv** under `Case_Study_2_Mosaic`.
+Data for the MOSAIC case study is available at: **https://osf.io/3a59k** under `raw data/study2`. Please note that there are 6 files not included in the full publication, but that were included in the analyses found in this notebook. These are available here: **https://osf.io/3a59k** under `Case_Study_2_Mosaic`.
 
 Data for the Mirror Game case study is available at:
 **https://osf.io/bauqs** under `Case_Study_3_Mirror_Game`.
