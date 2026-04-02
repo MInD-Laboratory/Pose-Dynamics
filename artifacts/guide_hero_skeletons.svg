@@ -1,0 +1,108 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 420" role="img" aria-labelledby="title desc">
+  <title id="title">Two stylized pose skeletons</title>
+  <desc id="desc">Two OpenPose-inspired template skeletons in different poses for the quick guide header.</desc>
+  <defs>
+    <linearGradient id="wash" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fffaf2"/>
+      <stop offset="100%" stop-color="#f6ecdf"/>
+    </linearGradient>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="16" stdDeviation="16" flood-color="#18222d" flood-opacity="0.14"/>
+    </filter>
+    <style>
+      .frame { fill: url(#wash); stroke: rgba(24,34,45,0.08); }
+      .halo-left { fill: #efd4b7; opacity: 0.75; }
+      .halo-right { fill: #d9eee9; opacity: 0.9; }
+      .joint-left, .joint-right { stroke: #fffaf2; stroke-width: 4; }
+      .bone-left, .bone-right { fill: none; stroke-linecap: round; stroke-linejoin: round; stroke-width: 10; }
+      .bone-left { stroke: #a3472f; }
+      .joint-left { fill: #a3472f; }
+      .bone-right { stroke: #2f6c63; }
+      .joint-right { fill: #2f6c63; }
+    </style>
+  </defs>
+
+  <g filter="url(#softShadow)">
+    <rect class="frame" x="18" y="20" width="604" height="380" rx="30"/>
+  </g>
+
+  <ellipse class="halo-left" cx="188" cy="220" rx="156" ry="164"/>
+  <ellipse class="halo-right" cx="456" cy="220" rx="156" ry="164"/>
+  <g aria-label="Neutral skeleton" transform="translate(10 -8)">
+    <line class="bone-left" x1="178" y1="116" x2="188" y2="96"/>
+    <line class="bone-left" x1="178" y1="116" x2="168" y2="96"/>
+    <line class="bone-left" x1="188" y1="96" x2="208" y2="104"/>
+    <line class="bone-left" x1="168" y1="96" x2="148" y2="104"/>
+    <line class="bone-left" x1="178" y1="116" x2="178" y2="154"/>
+    <line class="bone-left" x1="178" y1="154" x2="221" y2="162"/>
+    <line class="bone-left" x1="178" y1="154" x2="135" y2="162"/>
+    <line class="bone-left" x1="221" y1="162" x2="244" y2="210"/>
+    <line class="bone-left" x1="244" y1="210" x2="255" y2="253"/>
+    <line class="bone-left" x1="135" y1="162" x2="112" y2="210"/>
+    <line class="bone-left" x1="112" y1="210" x2="101" y2="253"/>
+    <line class="bone-left" x1="178" y1="154" x2="196" y2="232"/>
+    <line class="bone-left" x1="178" y1="154" x2="160" y2="232"/>
+    <line class="bone-left" x1="196" y1="232" x2="203" y2="305"/>
+    <line class="bone-left" x1="203" y1="305" x2="208" y2="367"/>
+    <line class="bone-left" x1="160" y1="232" x2="153" y2="305"/>
+    <line class="bone-left" x1="153" y1="305" x2="148" y2="367"/>
+
+    <circle class="joint-left" cx="178" cy="116" r="7.5"/>
+    <circle class="joint-left" cx="178" cy="154" r="7.5"/>
+    <circle class="joint-left" cx="221" cy="162" r="7"/>
+    <circle class="joint-left" cx="244" cy="210" r="7"/>
+    <circle class="joint-left" cx="255" cy="253" r="7"/>
+    <circle class="joint-left" cx="135" cy="162" r="7"/>
+    <circle class="joint-left" cx="112" cy="210" r="7"/>
+    <circle class="joint-left" cx="101" cy="253" r="7"/>
+    <circle class="joint-left" cx="196" cy="232" r="7"/>
+    <circle class="joint-left" cx="203" cy="305" r="7"/>
+    <circle class="joint-left" cx="208" cy="367" r="7"/>
+    <circle class="joint-left" cx="160" cy="232" r="7"/>
+    <circle class="joint-left" cx="153" cy="305" r="7"/>
+    <circle class="joint-left" cx="148" cy="367" r="7"/>
+    <circle class="joint-left" cx="188" cy="96" r="6.5"/>
+    <circle class="joint-left" cx="168" cy="96" r="6.5"/>
+    <circle class="joint-left" cx="208" cy="104" r="6.5"/>
+    <circle class="joint-left" cx="148" cy="104" r="6.5"/>
+  </g>
+
+  <g aria-label="Dynamic skeleton" transform="translate(24 -1)">
+    <line class="bone-right" x1="430" y1="114" x2="440" y2="95"/>
+    <line class="bone-right" x1="430" y1="114" x2="420" y2="95"/>
+    <line class="bone-right" x1="440" y1="95" x2="458" y2="104"/>
+    <line class="bone-right" x1="420" y1="95" x2="402" y2="106"/>
+    <line class="bone-right" x1="430" y1="114" x2="432" y2="153"/>
+    <line class="bone-right" x1="432" y1="153" x2="469" y2="154"/>
+    <line class="bone-right" x1="432" y1="153" x2="391" y2="167"/>
+    <line class="bone-right" x1="469" y1="154" x2="492" y2="128"/>
+    <line class="bone-right" x1="492" y1="128" x2="500" y2="94"/>
+    <line class="bone-right" x1="391" y1="167" x2="365" y2="213"/>
+    <line class="bone-right" x1="365" y1="213" x2="349" y2="248"/>
+    <line class="bone-right" x1="432" y1="153" x2="446" y2="231"/>
+    <line class="bone-right" x1="432" y1="153" x2="407" y2="223"/>
+    <line class="bone-right" x1="446" y1="231" x2="467" y2="294"/>
+    <line class="bone-right" x1="467" y1="294" x2="478" y2="356"/>
+    <line class="bone-right" x1="407" y1="223" x2="397" y2="289"/>
+    <line class="bone-right" x1="397" y1="289" x2="360" y2="344"/>
+
+    <circle class="joint-right" cx="430" cy="114" r="7.5"/>
+    <circle class="joint-right" cx="432" cy="153" r="7.5"/>
+    <circle class="joint-right" cx="469" cy="154" r="7"/>
+    <circle class="joint-right" cx="492" cy="128" r="7"/>
+    <circle class="joint-right" cx="500" cy="94" r="7"/>
+    <circle class="joint-right" cx="391" cy="167" r="7"/>
+    <circle class="joint-right" cx="365" cy="213" r="7"/>
+    <circle class="joint-right" cx="349" cy="248" r="7"/>
+    <circle class="joint-right" cx="446" cy="231" r="7"/>
+    <circle class="joint-right" cx="467" cy="294" r="7"/>
+    <circle class="joint-right" cx="478" cy="356" r="7"/>
+    <circle class="joint-right" cx="407" cy="223" r="7"/>
+    <circle class="joint-right" cx="397" cy="289" r="7"/>
+    <circle class="joint-right" cx="360" cy="344" r="7"/>
+    <circle class="joint-right" cx="440" cy="95" r="6.5"/>
+    <circle class="joint-right" cx="420" cy="95" r="6.5"/>
+    <circle class="joint-right" cx="458" cy="104" r="6.5"/>
+    <circle class="joint-right" cx="402" cy="106" r="6.5"/>
+  </g>
+</svg>

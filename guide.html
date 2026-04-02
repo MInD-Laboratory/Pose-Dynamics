@@ -52,6 +52,32 @@
       box-shadow: var(--shadow);
     }
 
+    .hero-inner {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
+      gap: 28px;
+      align-items: center;
+    }
+
+    .hero-copy {
+      min-width: 0;
+    }
+
+    .hero-art {
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+    }
+
+    .hero-art img {
+      width: min(100%, 470px);
+      height: auto;
+      display: block;
+      filter: drop-shadow(0 18px 26px rgba(24, 34, 45, 0.12));
+    }
+
     .hero::after {
       content: "";
       position: absolute;
@@ -323,11 +349,145 @@
         left: -16px;
         width: 16px;
       }
+
+      .hero-inner {
+        grid-template-columns: 1fr;
+        gap: 18px;
+      }
+
+      .hero-art {
+        justify-content: center;
+      }
     }
 
     @media (max-width: 1180px) {
+      .hero-inner {
+        grid-template-columns: minmax(0, 1fr) minmax(240px, 0.72fr);
+      }
+
       .branches.preprocess-grid {
         grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      }
+    }
+
+    @media print {
+      @page {
+        size: 340mm 560mm;
+        margin: 8mm;
+      }
+
+      html,
+      body {
+        width: 340mm;
+        height: 560mm;
+        background: #fff;
+      }
+
+      body {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+
+      .page {
+        width: 100%;
+        margin: 0;
+      }
+
+      .hero {
+        padding: 24px;
+        box-shadow: none;
+      }
+
+      .hero::after {
+        opacity: 0.65;
+      }
+
+      .hero-inner {
+        gap: 20px;
+      }
+
+      .hero-art img {
+        width: min(100%, 400px);
+        filter: none;
+      }
+
+      .hero h1 {
+        font-size: 2.75rem;
+        margin-bottom: 12px;
+      }
+
+      .hero p,
+      .stage .prompt,
+      .card p,
+      .bridge,
+      .metric-box,
+      .footer-bar,
+      .checklist li {
+        font-size: 0.84rem;
+        line-height: 1.35;
+      }
+
+      .eyebrow,
+      .stage-tag,
+      .badge {
+        font-size: 0.68rem;
+      }
+
+      .tree {
+        margin-top: 18px;
+      }
+
+      .stage {
+        margin-bottom: 16px;
+        padding: 18px 18px 16px;
+        box-shadow: none;
+        break-inside: avoid;
+      }
+
+      .stage-head {
+        margin-bottom: 12px;
+      }
+
+      .stage h2 {
+        font-size: 1.35rem;
+      }
+
+      .branches,
+      .branches.preprocess-grid {
+        gap: 10px;
+      }
+
+      .card {
+        padding: 14px;
+        break-inside: avoid;
+      }
+
+      .card h3 {
+        font-size: 0.96rem;
+        margin-bottom: 8px;
+      }
+
+      .checklist {
+        gap: 6px;
+      }
+
+      .bridge {
+        margin: 12px 0 16px;
+        padding: 12px 14px;
+      }
+
+      .metrics {
+        gap: 10px;
+        margin-top: 12px;
+      }
+
+      .metric-box {
+        padding: 12px;
+      }
+
+      .footer-bar {
+        margin-top: 18px;
+        padding: 12px 14px;
       }
     }
   </style>
@@ -335,13 +495,20 @@
 <body>
   <main class="page">
     <section class="hero">
-      <div class="eyebrow">Pose Analysis Framework</div>
-      <h1>Pose Analysis Quick Guide</h1>
-      <p>
-        This quick guide walks through the main stages of pose analysis, from acquisition and feature
-        selection through pre-processing and analysis. It is designed to help readers identify common
-        options at each stage and choose an approach that fits their data and research question.
-      </p>
+      <div class="hero-inner">
+        <div class="hero-copy">
+          <div class="eyebrow">Pose Analysis Framework</div>
+          <h1>Pose Analysis Quick Guide</h1>
+          <p>
+            This quick guide walks through the main stages of pose analysis, from acquisition, feature
+            selection, and pre-processing, to linear and recurrence analysis. It is designed to help readers identify common
+            options at each stage and choose an approach that fits their data and research question.
+          </p>
+        </div>
+        <div class="hero-art">
+          <img src="artifacts/guide_hero_skeletons.svg" alt="Two stylized pose skeletons in different poses">
+        </div>
+      </div>
     </section>
 
     <section class="tree">
@@ -380,7 +547,7 @@
           <section class="card">
             <div class="badge">Sampling</div>
             <h3>Is the frame rate constant?</h3>
-            <p>Recurrence assumes a fixed temporal unit for delay embedding.</p>
+            <p>Note that recurrence analysis assumes a fixed temporal unit for delay embedding.</p>
             <ul class="checklist">
               <li><strong>Yes:</strong> proceed directly to feature selection.</li>
               <li><strong>No:</strong> store timestamps and plan to resample during preprocessing.</li>
@@ -395,7 +562,7 @@
             <div class="stage-tag">Stage 2</div>
             <h2>Feature Selection</h2>
             <p class="prompt">
-              The next choice is what time series should represent movement. The aim is to balance anatomical specificity, reduced redundancy, and interpretability.
+              This step involves choosing a movement time series that offers a good balance of anatomical specificity, minimal redundancy, and interpretability.
             </p>
 
           </div>
@@ -439,9 +606,9 @@
             <h3>Regional pooling</h3>
             <p>Group landmarks into broader regions.</p>
             <ul class="checklist">
-              <li>Examples include the face, arms, hands, or whole-body subsets.</li>
+              <li>Examples: pooling across the face, arms, hands, or whole-body subsets.</li>
               <li>Useful when a regional summary is more meaningful than individual landmarks.</li>
-              <li>Can simplify both linear and recurrence-based analyses by reducing feature complexity.</li>
+              <li>Reduces anatomical precision and can hide meaningful joint-level differences.</li>
             </ul>
           </section>
         </div>
@@ -465,7 +632,7 @@
             <ul class="checklist">
               <li>Preferred rule: keep gap length below <code>Lmax = (m - 1)&tau;</code>.</li>
               <li>Short gaps can be linearly interpolated.</li>
-              <li>Long gaps should remain missing or be excluded at the window level.</li>
+              <li>Long gaps be excluded at on a window-by-window basis.</li>
             </ul>
           </section>
 
@@ -492,12 +659,12 @@
 
           <section class="card">
             <div class="badge">Normalization</div>
-            <h3>Is amplitude theoretically meaningful?</h3>
+            <h3>Is amplitude meaningful?</h3>
             <p>Choose scaling based on whether you want to preserve movement size or focus on structure.</p>
             <ul class="checklist">
               <li><strong>Z-score:</strong> best when amplitude is nuisance variance.</li>
               <li><strong>Unit interval:</strong> keeps within-signal proportional structure.</li>
-              <li><strong>No heavy normalization:</strong> keep scale when absolute magnitude is the real signal.</li>
+              <li><strong>Centering only:</strong> keep scale when absolute magnitude is important.</li>
             </ul>
           </section>
 
@@ -512,10 +679,23 @@
           </section>
         </div>
 
+      </article>
+
+      <article class="stage">
+        <div class="stage-head">
+          <div>
+            <div class="stage-tag">Analysis Selection</div>
+            <h2>Choose an Analysis</h2>
+            <p class="prompt">
+              Now decide what kind of question you want the analysis to answer.
+            </p>
+          </div>
+        </div>
+
         <div class="bridge">
-          Now it's time to select an analysis method:
           <strong>Do you want to know how much movement occurred, how movement is coordinated in space, or how movement unfolds over time?</strong>
-          The first two point toward linear metrics; the last points toward recurrence.
+          <br>
+          Linear metrics can quantify movement amount and broad spatial covariation, whereas recurrence analysis is best for understanding how movement patterns and coordination unfold over time.
         </div>
       </article>
 
@@ -550,7 +730,7 @@
             <ul class="checklist">
               <li>Cross-correlation or lagged correlation between matched individual signals.</li>
               <li>Useful for asking whether partners speed up, slow down, or fluctuate together.</li>
-              <li>Best interpreted alongside the individual movement summaries above.</li>
+              <li>Best interpreted alongside the individual movement summaries.</li>
             </ul>
           </section>
 
@@ -585,7 +765,7 @@
         <div class="stage-head">
           <div>
             <div class="stage-tag">Stage 4B</div>
-            <h2>Recurrence</h2>
+            <h2>Recurrence Analysis</h2>
             <p class="prompt">
               Recurrence methods answer the temporal question: when does a system return to similar states, and how
               are those returns organized over time?
@@ -618,12 +798,12 @@
           <section class="card analysis">
             <div class="badge">Detection</div>
             <h3>Define what counts as recurrence</h3>
-            <p>Threshold and safeguards determine the density and interpretability of the recurrence plot.</p>
+            <p>Determines the density and interpretability of the recurrence plot.</p>
             <ul class="checklist">
               <li><strong>Radius &epsilon;:</strong> fixed threshold or tuned to target RR, often around 2 to 5% recurrence.</li>
               <li><strong>Rescaling:</strong> mean-rescaled distances help compare across heterogeneous signals.</li>
               <li><strong>Theiler window:</strong> mainly for auto-RQA to suppress trivial temporal neighbors.</li>
-              <li><strong>Minimum line length:</strong> pilot values to avoid artificially inflated determinism.</li>
+              <li><strong>Minimum line length:</strong> increase this value to avoid artificially inflated determinism.</li>
             </ul>
           </section>
 
@@ -657,7 +837,7 @@
       </article>
 
       <div class="footer-bar">
-        This quick guide is designed to support the following paper: Sale, C., Macpherson, M.C., Patil, G., Miles, K., Wallot, S., &amp; Richardson, M. J. (n.d.). <em>Nonlinear methods for analyzing pose in behavioral research.</em>
+        This quick guide is designed to support the following paper: Sale, C., Macpherson, M.C., Patil, G., Miles, K., Kallen, R., Wallot, S., &amp; Richardson, M. J. (n.d.). <em>Nonlinear methods for analyzing pose in behavioral research.</em>
       </div>
     </section>
   </main>
