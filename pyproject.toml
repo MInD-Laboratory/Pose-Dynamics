@@ -1,0 +1,39 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pose-dynamics"
+version = "0.0.1"
+description = "A reproducible framework for nonlinear (recurrence) analysis of pose data."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+dependencies = [
+    "numpy>=1.26",
+    "pandas>=2.0",
+    "scipy>=1.11",
+    "rqa-analysis>=1.0",
+    "pyyaml>=6.0",
+    "matplotlib>=3.8",
+]
+
+[project.scripts]
+pose-dynamics = "pose_dynamics.__main__:main"
+
+[project.optional-dependencies]
+viz = ["matplotlib>=3.8"]
+# Case-study reproduction notebooks only (stats are dataset-specific, not core):
+repro = ["matplotlib>=3.8", "statsmodels>=0.14", "jupyter"]
+dev = ["pytest>=8.0", "matplotlib>=3.8"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pose_dynamics"]
+# bundle the case-study conditions tables in the wheel
+artifacts = [
+    "src/pose_dynamics/case_studies/*/data/*.csv",
+    "src/pose_dynamics/data/fixtures/*.csv",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

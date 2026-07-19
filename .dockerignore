@@ -1,0 +1,15 @@
+# Keep the image lean — dev/reference material and build artifacts.
+.git/
+.gitignore
+tests/
+benchmarks/
+manuscript.tex
+numeric_inventory.md
+package_plan.md
+**/__pycache__/
+*.pyc
+.pytest_cache/
+dist/
+build/
+*.egg-info/
+data/

@@ -1,0 +1,31 @@
+# Full pipeline: extract features AND compute linear + recurrence metrics per
+# window.  Run:  pose-dynamics run configs/full_analysis.yaml
+data: ./data
+frame_rate: 60
+
+tau: 20            # choose these in the quickstart notebook
+m: 4
+
+conf_threshold: 0.30
+filter_cutoff: 10.0
+filter_order: 4
+
+features:
+  - step: coordinate_normalization
+    params: {width: 720, height: 720}
+  - step: roi_centroid
+    params:
+      rois:
+        arms: [2, 3, 4, 5, 6, 7]
+        upper_body: [1, 2, 5, 8]
+  - step: velocity_magnitude
+    params: {method: diff}
+
+compute_linear: true
+compute_recurrence: true
+radius_mode: fixed_rrec
+target_rec: 5.0
+window_s: 30
+
+features_dir: ./features
+output_csv: ./metrics.csv

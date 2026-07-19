@@ -1,0 +1,12 @@
+# One-command Tier 0 launch:  docker compose up
+# Then open the printed http://127.0.0.1:8888/ link — it lands on the quickstart.
+# Put your own canonical CSVs in ./data (created next to this file); they appear
+# inside the notebook at /work/data.
+services:
+  pose-dynamics:
+    build: .
+    image: posedynamics/pose-dynamics
+    ports:
+      - "8888:8888"
+    volumes:
+      - ./data:/work/data

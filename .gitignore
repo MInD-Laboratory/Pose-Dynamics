@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+
+# Generated outputs / demo artifacts
+embedding_out/
+examples/embedding_out/
+notebooks/*_results.csv
+notebooks/*.png
+
+# Local-only reference docs (not distributed)
+manuscript.tex
+numeric_inventory.md
+package_plan.md
+
+# Docker user-data mount
+data/
+
+# Local tooling
+.claude/

@@ -1,0 +1,9 @@
+# Pinned runtime + notebook dependencies for reproducible Docker builds.
+# Regenerate by resolving the versions you validate against, then pinning them here.
+numpy==2.1.3
+pandas==2.2.3
+scipy==1.15.2
+matplotlib==3.10.0
+statsmodels==0.14.4
+jupyterlab==4.3.5
+rqa-analysis==1.0.1

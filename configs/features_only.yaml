@@ -1,0 +1,28 @@
+# Extract features over a folder of CSVs — no recurrence analysis, just the
+# feature time series written to features/.  Run:  pose-dynamics run configs/features_only.yaml
+data: ./data
+frame_rate: 60
+
+tau: 20            # unused when compute_recurrence is false, but required
+m: 4
+
+conf_threshold: 0.30
+filter_cutoff: 10.0
+filter_order: 4
+
+# The feature pipeline (composable primitives — see docs/feature_steps.md).
+# These indices are OpenPose BODY_25; adjust to your skeleton.
+features:
+  - step: coordinate_normalization
+    params: {width: 720, height: 720}
+  - step: roi_centroid
+    params:
+      rois:
+        arms: [2, 3, 4, 5, 6, 7]
+        upper_body: [1, 2, 5, 8]
+  - step: velocity_magnitude
+    params: {method: diff}
+
+compute_linear: false
+compute_recurrence: false
+features_dir: ./features
