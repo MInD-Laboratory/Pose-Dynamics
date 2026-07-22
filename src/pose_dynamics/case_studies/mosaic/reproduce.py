@@ -7,8 +7,11 @@ velocity-magnitude signals. That dyadic analysis needs **both** partners (the
 left- and right-camera files) and many pairs; :func:`run_reproduction` implements
 it but requires the full dataset.
 
-The individual-level pieces — ROI velocity-magnitude linear metrics and auto-RQA —
-need only one participant and are exercised by :func:`run_individual`.
+The individual-level pieces — ROI velocity-magnitude linear metrics only, no
+recurrence analysis — need only one participant and are exercised by
+:func:`run_individual`. The paper's Case 2 results report individual-level
+*linear* metrics and dyadic CRQA; it never reports individual-level auto-RQA, so
+:func:`run_individual` doesn't compute any.
 
 Notebooks call these functions; they hold no analysis logic themselves.
 """
@@ -22,10 +25,11 @@ import pandas as pd
 
 from ...data.pose_sequence import PoseSequence
 from ...features import FeaturePipeline
+from ...features.geometry import procrustes_uniform
 from ...preprocessing import butterworth_filter, interpolate_gaps, mask_low_confidence
-from ...rqa import RqaParams, run_auto_rqa, run_cross_rqa
+from ...rqa import RqaParams, run_cross_rqa
 from ...embedding import EmbeddingParams
-from ...windowing import make_windows
+from ...windowing import Window, make_windows
 from . import config as C
 
 _FILE_RE = re.compile(r"^S(\d+)_T(\d+)_(left|right)$")
@@ -62,25 +66,35 @@ def load_condition_map(conditions_csv: str | Path | None = None) -> dict[tuple[i
 # ROI resolution + loading
 # ----------------------------------------------------------------------
 def resolve_rois(columns: list[str]) -> tuple[list[str], dict[str, list[int]]]:
-    """Resolve ROI keypoint names present in a header.
+    """Resolve the curated alignment keypoint set present in a header, plus the
+    ROI membership map.
 
-    Returns ``(keypoint_names, roi_index_map)`` where the index map gives, per ROI,
-    the positions of its keypoints within ``keypoint_names`` (their union).
+    Returns ``(keypoint_names, roi_index_map)``. ``keypoint_names`` is
+    ``C.SELECTED_KEYPOINTS`` restricted to what's actually present in this file's
+    header -- cathy-dev's curated alignment/feature selection, which deliberately
+    excludes lower-body points (hips, knees, ankles, toes, heels) that are
+    occluded/unreliable in a seated conversation and must not influence the
+    Procrustes fit in :func:`windowed_align`. In this design every entry here
+    ends up in one of the three ROIs (the face landmarks all match a
+    ``C.CENTRE_FACE_SUBSTRINGS`` substring), so this list and the ROI union
+    happen to coincide exactly. ``roi_index_map`` gives, per ROI, the positions
+    of its keypoints within ``keypoint_names``, used later to reduce the
+    *aligned* pose down to ROI centroids.
     """
-    base = sorted({c.replace("_x_offset", "").replace("_y_offset", "").replace("_confidence", "")
-                   for c in columns if c.endswith(("_x_offset", "_y_offset", "_confidence"))})
+    present = {c.replace("_x_offset", "").replace("_y_offset", "").replace("_confidence", "")
+               for c in columns if c.endswith(("_x_offset", "_y_offset", "_confidence"))}
+    keypoint_names = [n for n in C.SELECTED_KEYPOINTS if n in present]
+    base = set(keypoint_names)
+    pos = {n: i for i, n in enumerate(keypoint_names)}
 
-    roi_names: dict[str, list[str]] = {}
+    roi_index_map: dict[str, list[int]] = {}
     for roi, exact in C.ROI_EXACT.items():
         names = [n for n in exact if n in base]
         if roi == "centre_face":
-            names += [n for n in base if any(s in n for s in C.CENTRE_FACE_SUBSTRINGS)
+            names += [n for n in keypoint_names if any(s in n for s in C.CENTRE_FACE_SUBSTRINGS)
                       and n not in names]
-        roi_names[roi] = names
-
-    keypoint_names = sorted({n for names in roi_names.values() for n in names})
-    pos = {n: i for i, n in enumerate(keypoint_names)}
-    roi_index_map = {roi: [pos[n] for n in names] for roi, names in roi_names.items() if names}
+        if names:
+            roi_index_map[roi] = [pos[n] for n in names]
     return keypoint_names, roi_index_map
 
 
@@ -120,20 +134,127 @@ def _downsample(seq: PoseSequence, factor: int) -> PoseSequence:
     )
 
 
-def roi_velocity_signals(seq: PoseSequence, roi_index_map: dict[str, list[int]]):
-    """Preprocess and reduce to one ROI velocity-magnitude signal per ROI.
+def preprocess_pose(seq: PoseSequence) -> PoseSequence:
+    """Mask -> interpolate -> filter -> downsample -> centre-on-nose -> normalize
+    (Case 2 settings).
 
-    mask -> interpolate -> filter -> normalize to [0,1] -> downsample to 30 Hz,
-    then ROI centroid -> velocity magnitude.
+    The nose-anchor centering matches cathy-dev's actual ``apply_spatial`` stage
+    (``centering.method="anchor_keypoint"``): it subtracts *that same frame's*
+    nose position from every keypoint, per frame -- not a single per-window
+    constant -- removing frame-to-frame head-translation jitter continuously
+    throughout the trial, before :func:`windowed_align` ever sees the data. (Order
+    relative to filtering/scaling doesn't matter -- both are linear and commute
+    with this per-frame subtraction -- so it's placed here for one shared code
+    path rather than split across two stages like cathy-dev's does.) A frame
+    where the nose itself is invalid propagates NaN to every keypoint in that
+    frame, same principle as :func:`windowed_align`'s whole-window NaN when the
+    nose is missing for an entire window.
+
+    Shared by the template-building pass and the per-file analysis pass, so both
+    operate in the same normalized coordinate space before alignment.
     """
     seq = mask_low_confidence(seq, C.CONF_THRESHOLD)
     seq = interpolate_gaps(seq, C.INTERP_CAP)
     seq = butterworth_filter(seq, C.FILTER_CUTOFF, C.FILTER_ORDER)
     seq = _downsample(seq, int(round(C.FRAME_RATE / C.TARGET_RATE)))
-
+    nose_idx = seq.keypoint_names.index("Nose")
     pipe = FeaturePipeline.from_config([
+        {"step": "center", "params": {"reference": nose_idx}},
         {"step": "coordinate_normalization",
-         "params": {"width": C.VIDEO_WIDTH, "height": C.VIDEO_HEIGHT, "mode": "unit"}},
+         "params": {"width": C.VIDEO_WIDTH, "height": C.VIDEO_HEIGHT, "mode": C.NORMALIZE_MODE}},
+    ])
+    return pipe.run(seq).pose
+
+
+def build_global_template(sequences: list[PoseSequence]) -> np.ndarray:
+    """Global template = mean ROI-keypoint pose (normalized coords) across the
+    dataset (paper: "a single global template by averaging the position of each ROI
+    keypoint across all valid frames in the dataset"). ``sequences`` must already be
+    preprocessed (see :func:`preprocess_pose`) and share the same ``keypoint_names``.
+    """
+    names = sequences[0].keypoint_names
+    for seq in sequences[1:]:
+        if seq.keypoint_names != names:
+            raise ValueError(
+                "MOSAIC files must resolve to the same keypoint set to share a "
+                "global Procrustes template; got a mismatch against the first "
+                "sampled file."
+            )
+    per_file = [np.nanmean(seq.coords, axis=0) for seq in sequences]  # each (K, 2)
+    return np.nanmean(np.stack(per_file, axis=0), axis=0)
+
+
+def windowed_align(seq: PoseSequence, template: np.ndarray) -> list[tuple[Window, np.ndarray]]:
+    """Fit one rigid+uniform-scale Procrustes transform per analysis window (from
+    that window's mean pose to the global ``template``) and apply it to every frame
+    in the window.
+
+    Because RQA windows overlap 50%, a frame's aligned position is only well-defined
+    within a specific window, so alignment happens per-window rather than once over
+    the whole sequence (contrast Case 1's single global-template, per-frame fit).
+
+    Following the paper, coordinates are first centred on the window's mean nose
+    position -- a per-window constant offset that is mathematically absorbed by
+    ``procrustes_uniform``'s own centering (any constant shift of the input cancels
+    out of the fit), but kept explicit here to match the published method text.
+    Since :func:`preprocess_pose` already centres every frame on its *own* nose
+    position, the nose is already ~(0, 0) by the time it gets here, making this
+    step a harmless no-op in practice -- left in place because it costs nothing
+    and keeps this function correct on its own even if called on data that
+    skipped that upstream step. If the nose has zero valid frames across the
+    whole window, centering is undefined and the *entire* window is set to NaN.
+
+    A keypoint is used in the fit only if it is finite in at least
+    ``C.MIN_VALID_FRAC_PER_KP`` of the window's frames; windows with fewer than
+    ``C.MIN_KEYPOINTS_FOR_FIT`` such keypoints are left nose-centred but not
+    rotated/scaled.
+    """
+    nose_idx = seq.keypoint_names.index("Nose")
+    windows = make_windows(seq.n_frames, seq.frame_rate, C.WINDOW_S, C.OVERLAP)
+    out: list[tuple[Window, np.ndarray]] = []
+    for w in windows:
+        coords = seq.coords[w.start:w.stop]                    # (L, K, 2)
+        nose_pos = np.nanmean(coords[:, nose_idx, :], axis=0)   # (2,)
+        if not np.all(np.isfinite(nose_pos)):
+            out.append((w, np.full_like(coords, np.nan)))
+            continue
+        centred = coords - nose_pos
+        finite_per_frame = np.all(np.isfinite(centred), axis=2)  # (L, K)
+        valid_frac = finite_per_frame.mean(axis=0)               # (K,)
+        valid = valid_frac >= C.MIN_VALID_FRAC_PER_KP
+        if valid.sum() < C.MIN_KEYPOINTS_FOR_FIT:
+            out.append((w, centred))
+            continue
+        window_mean = np.nanmean(centred[:, valid, :], axis=0)  # (n_valid, 2)
+        tp = procrustes_uniform(window_mean, template[valid], allow_scale=True)
+        out.append((w, centred @ tp.L + tp.t))
+    return out
+
+
+def _window_roi_speeds(aligned_coords: np.ndarray, keypoint_names: list[str],
+                       roi_index_map: dict[str, list[int]], frame_rate: float):
+    """ROI centroid -> velocity magnitude for one window's aligned coordinates."""
+    win_seq = PoseSequence(coords=aligned_coords, keypoint_names=keypoint_names, frame_rate=frame_rate)
+    pipe = FeaturePipeline.from_config([
+        {"step": "roi_centroid", "params": {"rois": roi_index_map}},
+        {"step": "velocity_magnitude", "params": {"method": "diff"}},
+    ])
+    return pipe.run(win_seq).features  # columns: {roi}_speed
+
+
+def roi_velocity_signals(seq: PoseSequence, roi_index_map: dict[str, list[int]]):
+    """Preprocess and reduce to one ROI velocity-magnitude signal per ROI --
+    an *unaligned* preview over the whole sequence, for exploration/visualization.
+
+    mask -> interpolate -> filter -> normalize -> downsample to 30 Hz, then ROI
+    centroid -> velocity magnitude. :func:`run_individual` and
+    :func:`run_reproduction` additionally apply windowed Procrustes alignment
+    (:func:`windowed_align`) before this reduction, matching the published method;
+    that alignment has no single well-defined whole-sequence form (RQA windows
+    overlap), so this preview is left unaligned.
+    """
+    seq = preprocess_pose(seq)
+    pipe = FeaturePipeline.from_config([
         {"step": "roi_centroid", "params": {"rois": roi_index_map}},
         {"step": "velocity_magnitude", "params": {"method": "diff"}},
     ])
@@ -162,31 +283,49 @@ def cross_params() -> RqaParams:
 # ----------------------------------------------------------------------
 # Individual-level analysis (runnable with one participant)
 # ----------------------------------------------------------------------
-def run_individual(files: list[str | Path], conditions_csv: str | Path | None = None,
-                   progress: bool = True) -> pd.DataFrame:
-    """Per-window individual ROI linear metrics + auto-RQA (one participant)."""
+def run_individual(
+    files: list[str | Path],
+    conditions_csv: str | Path | None = None,
+    template: np.ndarray | None = None,
+    template_sample: int = C.TEMPLATE_SAMPLE,
+    progress: bool = True,
+) -> pd.DataFrame:
+    """Per-window individual ROI linear metrics (one participant) -- RMS, mean,
+    and SD of velocity magnitude. No recurrence analysis: the paper's Case 2
+    individual-level results are linear-metrics only; dyadic CRQA lives in
+    :func:`process_dyad`/:func:`run_reproduction`.
+
+    Applies windowed Procrustes alignment before ROI reduction (see
+    :func:`windowed_align`), matching the published method. If ``template`` isn't
+    supplied, it's built from a sample of ``files`` (see
+    :func:`build_global_template`) -- pass an explicit ``template`` (e.g. built once
+    and shared with :func:`run_reproduction`) for a single dataset-wide template.
+    """
     cond_map = load_condition_map(conditions_csv)
-    ap = auto_params()
+
+    if template is None:
+        sample = files[: min(template_sample, len(files))]
+        sample_seqs = [preprocess_pose(load_mosaic_file(f)[0]) for f in sample]
+        template = build_global_template(sample_seqs)
+        del sample_seqs
+
     rows = []
     for f in files:
         seq, roi_map = load_mosaic_file(f)
-        cond = cond_map.get((seq.meta["session"], seq.meta["trial"]))
-        feats = roi_velocity_signals(seq, roi_map)
-        windows = make_windows(feats.n_frames, feats.frame_rate, C.WINDOW_S, C.OVERLAP)
-        for roi in roi_map:
-            sig = feats.get(f"{roi}_speed")
-            for w in windows:
-                s = sig[w.start:w.stop]
+        session, trial = seq.meta["session"], seq.meta["trial"]
+        cond = cond_map.get((session, trial))
+        seq = preprocess_pose(seq)
+        for w, aligned in windowed_align(seq, template):
+            feats = _window_roi_speeds(aligned, seq.keypoint_names, roi_map, seq.frame_rate)
+            for roi in roi_map:
+                s = feats.get(f"{roi}_speed")
                 if not np.all(np.isfinite(s)):
                     continue
-                auto = run_auto_rqa(s, ap)
                 rows.append({
-                    "session": seq.meta["session"], "trial": seq.meta["trial"],
+                    "session": session, "trial": trial,
                     "condition": cond, "roi": roi, "window": w.index,
                     "rms": float(np.sqrt(np.mean(s ** 2))),
                     "mean_vel": float(np.mean(s)), "sd_vel": float(np.std(s)),
-                    "perc_recur": auto.metrics["perc_recur"],
-                    "perc_determ": auto.metrics["perc_determ"],
                 })
         if progress:
             print(f"  {Path(f).name}: {cond}")
@@ -199,19 +338,31 @@ def run_individual(files: list[str | Path], conditions_csv: str | Path | None = 
 # Dyadic analysis (needs BOTH partners; the paper's figure)
 # ----------------------------------------------------------------------
 def process_dyad(right: PoseSequence, left: PoseSequence, roi_map: dict[str, list[int]],
-                 condition: str) -> list[dict]:
-    """Windowed interpersonal CRQA + linear cross-correlation between two partners."""
-    fr = roi_velocity_signals(right, roi_map)
-    fl = roi_velocity_signals(left, roi_map)
-    n = min(fr.n_frames, fl.n_frames)
+                 condition: str, template: np.ndarray) -> list[dict]:
+    """Windowed interpersonal CRQA + linear cross-correlation between two partners.
+
+    Both partners are preprocessed and trimmed to a shared frame count first (so
+    window boundaries line up in time), then each is aligned independently, per
+    window, against the same shared ``template`` (see :func:`windowed_align`).
+    """
+    right = preprocess_pose(right)
+    left = preprocess_pose(left)
+    n = min(right.n_frames, left.n_frames)
+    right = PoseSequence(coords=right.coords[:n], keypoint_names=right.keypoint_names,
+                         frame_rate=right.frame_rate)
+    left = PoseSequence(coords=left.coords[:n], keypoint_names=left.keypoint_names,
+                        frame_rate=left.frame_rate)
+
     cp = cross_params()
     rows = []
-    for roi in roi_map:
-        a = fr.get(f"{roi}_speed")[:n]
-        b = fl.get(f"{roi}_speed")[:n]
-        windows = make_windows(n, fr.frame_rate, C.WINDOW_S, C.OVERLAP)
-        for w in windows:
-            aw, bw = a[w.start:w.stop], b[w.start:w.stop]
+    right_windows = windowed_align(right, template)
+    left_windows = windowed_align(left, template)
+    for (w, aligned_r), (_, aligned_l) in zip(right_windows, left_windows):
+        feats_r = _window_roi_speeds(aligned_r, right.keypoint_names, roi_map, right.frame_rate)
+        feats_l = _window_roi_speeds(aligned_l, left.keypoint_names, roi_map, left.frame_rate)
+        for roi in roi_map:
+            aw = feats_r.get(f"{roi}_speed")
+            bw = feats_l.get(f"{roi}_speed")
             if not (np.all(np.isfinite(aw)) and np.all(np.isfinite(bw))):
                 continue
             cross = run_cross_rqa(aw, bw, cp)
@@ -228,9 +379,21 @@ def process_dyad(right: PoseSequence, left: PoseSequence, roi_map: dict[str, lis
     return rows
 
 
-def run_reproduction(data_dir: str | Path, conditions_csv: str | Path | None = None,
-                     progress: bool = True) -> pd.DataFrame:
-    """Full dyadic reproduction. Requires both camera files per session-trial."""
+def run_reproduction(
+    data_dir: str | Path,
+    conditions_csv: str | Path | None = None,
+    template: np.ndarray | None = None,
+    template_sample: int = C.TEMPLATE_SAMPLE,
+    progress: bool = True,
+) -> pd.DataFrame:
+    """Full dyadic reproduction. Requires both camera files per session-trial.
+
+    Applies windowed Procrustes alignment (see :func:`process_dyad`) before ROI
+    reduction. If ``template`` isn't supplied, it's built from a sample of the
+    discovered session-trials (see :func:`build_global_template`) -- pass an
+    explicit ``template`` (e.g. shared with :func:`run_individual`) for a single
+    dataset-wide template.
+    """
     data_dir = Path(data_dir)
     cond_map = load_condition_map(conditions_csv)
     files = [p for p in data_dir.glob("S*_T*_*.csv") if not p.name.startswith("._")]
@@ -239,7 +402,6 @@ def run_reproduction(data_dir: str | Path, conditions_csv: str | Path | None = N
         s, t, cam = parse_file(f)
         by_key.setdefault((s, t), {})[cam] = f
 
-    rows = []
     keys = sorted(k for k, v in by_key.items() if {"left", "right"} <= set(v))
     if not keys:
         raise FileNotFoundError(
@@ -247,6 +409,14 @@ def run_reproduction(data_dir: str | Path, conditions_csv: str | Path | None = N
             "reproduction needs both partners. Only individual-level analysis is "
             "possible with single-camera data (see run_individual)."
         )
+
+    if template is None:
+        sample_files = [by_key[k][cam] for k in keys[:template_sample] for cam in ("left", "right")]
+        sample_seqs = [preprocess_pose(load_mosaic_file(f)[0]) for f in sample_files]
+        template = build_global_template(sample_seqs)
+        del sample_seqs
+
+    rows = []
     for (s, t) in keys:
         cond = cond_map.get((s, t))
         if cond not in C.CONDITION_ORDER:
@@ -255,7 +425,7 @@ def run_reproduction(data_dir: str | Path, conditions_csv: str | Path | None = N
         left, _ = load_mosaic_file(by_key[(s, t)]["left"])
         if progress:
             print(f"  session {s} trial {t} ({cond})")
-        rows.extend(process_dyad(right, left, roi_map, cond))
+        rows.extend(process_dyad(right, left, roi_map, cond, template))
     df = pd.DataFrame(rows)
     df["condition"] = pd.Categorical(df["condition"], categories=C.CONDITION_ORDER, ordered=True)
     return df
@@ -265,7 +435,9 @@ def run_reproduction(data_dir: str | Path, conditions_csv: str | Path | None = N
 # Figures
 # ----------------------------------------------------------------------
 def plot_individual_figure(df: pd.DataFrame, roi: str = "arms", axes=None):
-    """Individual ROI metrics by condition (mean +/- SEM) for one ROI."""
+    """Individual ROI linear metrics by condition (mean +/- SEM) for one ROI --
+    RMS, mean, and SD of velocity magnitude (no recurrence metrics; see module
+    docstring)."""
     import matplotlib.pyplot as plt
 
     if axes is None:
@@ -273,8 +445,8 @@ def plot_individual_figure(df: pd.DataFrame, roi: str = "arms", axes=None):
     axes = np.asarray(axes).flatten()
     sub = df[df["roi"] == roi]
     for (metric, ylab), ax in zip(
-        [("rms", f"{roi} RMS velocity"), ("perc_recur", f"{roi} %REC"),
-         ("perc_determ", f"{roi} %DET")], axes):
+        [("rms", f"{roi} RMS velocity"), ("mean_vel", f"{roi} mean velocity"),
+         ("sd_vel", f"{roi} SD velocity")], axes):
         stats = (sub[["condition", metric]].dropna()
                  .groupby("condition", observed=True)[metric].agg(["mean", "sem"])
                  .reindex(C.CONDITION_ORDER))

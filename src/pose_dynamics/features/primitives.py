@@ -69,9 +69,19 @@ class CoordinateNormalization(Primitive):
     """Rescale coordinates to a resolution-independent range.
 
     ``mode="unit"`` (default): divide axis 0 by ``width``, axis 1 by ``height``
-    (and axis 2 by ``depth`` if 3-D), mapping to [0, 1] (Cases 1 & 2, decided).
+    (and axis 2 by ``depth`` if 3-D), mapping to [0, 1] (Case 1).
     ``mode="centered"``: translate the frame centre to the origin first, then
-    rescale so edges map to [-1, 1].
+    rescale so edges map to [-1, 1]. Assumes raw top-left-origin pixel input.
+    ``mode="scale_only"``: rescale by the *full* width/height with no translation
+    -- for input that has already been translated to a video-centre origin
+    upstream of this pipeline (e.g. MOSAIC's ``_offset`` export columns), so only
+    the scaling half of the paper's normalization step remains to be done here;
+    applying ``"centered"`` to already-centred input would re-translate it a
+    second time and corrupt it. Deliberately divides by the full dimension rather
+    than half (which would map frame edges to exactly [-1, 1]): keypoints can be
+    tracked/extrapolated beyond the nominal visible frame (e.g. an occluded knee
+    under a table) without an artificial cutoff, matching the convention actually
+    used to produce the MOSAIC dataset's coordinates upstream.
     """
 
     name = "coordinate_normalization"
@@ -79,8 +89,8 @@ class CoordinateNormalization(Primitive):
     produces = frozenset({POSE})
 
     def __init__(self, width: float, height: float, depth: float | None = None, mode: str = "unit"):
-        if mode not in ("unit", "centered"):
-            raise ValueError("mode must be 'unit' or 'centered'.")
+        if mode not in ("unit", "centered", "scale_only"):
+            raise ValueError("mode must be 'unit', 'centered', or 'scale_only'.")
         self.width, self.height, self.depth, self.mode = width, height, depth, mode
 
     def params(self) -> dict[str, Any]:
@@ -94,6 +104,8 @@ class CoordinateNormalization(Primitive):
         if self.mode == "centered":
             coords = coords - (scale / 2.0)
             coords = coords / (scale / 2.0)
+        elif self.mode == "scale_only":
+            coords = coords / scale
         else:
             coords = coords / scale
         return PipelineContext(

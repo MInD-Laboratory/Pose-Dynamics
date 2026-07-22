@@ -124,6 +124,18 @@ def test_coordinate_normalization_centered():
     np.testing.assert_allclose(out.pose.coords[0, 0], [1.0, -1.0])  # edges -> [-1, 1]
 
 
+def test_coordinate_normalization_scale_only():
+    # input already translated to a video-centre origin upstream (e.g. MOSAIC's
+    # "_offset" columns) -- only scale by the *full* width/height (not half), no
+    # re-translation; deliberately doesn't map frame edges to exactly [-1, 1], so
+    # keypoints tracked/extrapolated beyond the nominal frame aren't clipped.
+    coords = np.array([[[360.0, -360.0]]])
+    prim = build_primitive("coordinate_normalization",
+                           {"width": 720, "height": 720, "mode": "scale_only"})
+    out = prim.apply(_ctx(_pose(coords)))
+    np.testing.assert_allclose(out.pose.coords[0, 0], [0.5, -0.5])
+
+
 def test_center_on_keypoint():
     coords = np.array([[[1.0, 1.0], [3.0, 5.0]]])  # kp0 is reference
     prim = build_primitive("center", {"reference": 0})
