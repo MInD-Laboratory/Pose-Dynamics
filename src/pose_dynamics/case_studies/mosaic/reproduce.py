@@ -295,6 +295,11 @@ def run_individual(
     individual-level results are linear-metrics only; dyadic CRQA lives in
     :func:`process_dyad`/:func:`run_reproduction`.
 
+    Each output row carries ``session``/``camera`` -- since a session's ``camera``
+    (left/right) is a dedicated webcam per participant, ``session`` + ``camera``
+    together identify one participant, e.g. for a mixed-effects model's random
+    intercept (the paper: "random intercepts for pair and individual-within-pair").
+
     Applies windowed Procrustes alignment before ROI reduction (see
     :func:`windowed_align`), matching the published method. If ``template`` isn't
     supplied, it's built from a sample of ``files`` (see
@@ -312,7 +317,7 @@ def run_individual(
     rows = []
     for f in files:
         seq, roi_map = load_mosaic_file(f)
-        session, trial = seq.meta["session"], seq.meta["trial"]
+        session, trial, camera = seq.meta["session"], seq.meta["trial"], seq.meta["camera"]
         cond = cond_map.get((session, trial))
         seq = preprocess_pose(seq)
         for w, aligned in windowed_align(seq, template):
@@ -322,7 +327,7 @@ def run_individual(
                 if not np.all(np.isfinite(s)):
                     continue
                 rows.append({
-                    "session": session, "trial": trial,
+                    "session": session, "trial": trial, "camera": camera,
                     "condition": cond, "roi": roi, "window": w.index,
                     "rms": float(np.sqrt(np.mean(s ** 2))),
                     "mean_vel": float(np.mean(s)), "sd_vel": float(np.std(s)),
@@ -338,12 +343,17 @@ def run_individual(
 # Dyadic analysis (needs BOTH partners; the paper's figure)
 # ----------------------------------------------------------------------
 def process_dyad(right: PoseSequence, left: PoseSequence, roi_map: dict[str, list[int]],
-                 condition: str, template: np.ndarray) -> list[dict]:
+                 condition: str, template: np.ndarray,
+                 session: int | None = None, trial: int | None = None) -> list[dict]:
     """Windowed interpersonal CRQA + linear cross-correlation between two partners.
 
     Both partners are preprocessed and trimmed to a shared frame count first (so
     window boundaries line up in time), then each is aligned independently, per
     window, against the same shared ``template`` (see :func:`windowed_align`).
+
+    ``session``/``trial`` are carried through into each output row (not used
+    internally) so a mixed-effects model can group by pair (``session`` -- the
+    paper: "random intercepts for pair") -- pass them from :func:`run_reproduction`.
     """
     right = preprocess_pose(right)
     left = preprocess_pose(left)
@@ -370,6 +380,7 @@ def process_dyad(right: PoseSequence, left: PoseSequence, roi_map: dict[str, lis
             za = (aw - aw.mean()) / (aw.std() + 1e-8)
             zb = (bw - bw.mean()) / (bw.std() + 1e-8)
             rows.append({
+                "session": session, "trial": trial,
                 "condition": condition, "roi": roi, "window": w.index,
                 "cross_perc_recur": cross.metrics["perc_recur"],
                 "cross_perc_determ": cross.metrics["perc_determ"],
@@ -425,7 +436,7 @@ def run_reproduction(
         left, _ = load_mosaic_file(by_key[(s, t)]["left"])
         if progress:
             print(f"  session {s} trial {t} ({cond})")
-        rows.extend(process_dyad(right, left, roi_map, cond, template))
+        rows.extend(process_dyad(right, left, roi_map, cond, template, session=s, trial=t))
     df = pd.DataFrame(rows)
     df["condition"] = pd.Categorical(df["condition"], categories=C.CONDITION_ORDER, ordered=True)
     return df
@@ -447,6 +458,31 @@ def plot_individual_figure(df: pd.DataFrame, roi: str = "arms", axes=None):
     for (metric, ylab), ax in zip(
         [("rms", f"{roi} RMS velocity"), ("mean_vel", f"{roi} mean velocity"),
          ("sd_vel", f"{roi} SD velocity")], axes):
+        stats = (sub[["condition", metric]].dropna()
+                 .groupby("condition", observed=True)[metric].agg(["mean", "sem"])
+                 .reindex(C.CONDITION_ORDER))
+        ax.bar(range(len(C.CONDITION_ORDER)), stats["mean"], yerr=stats["sem"],
+               color=COLORS, edgecolor="black", linewidth=2, capsize=5)
+        ax.set_xticks(range(len(C.CONDITION_ORDER)))
+        ax.set_xticklabels(C.CONDITION_ORDER, rotation=30, ha="right")
+        ax.set_ylabel(ylab, fontsize=11)
+    axes[0].figure.tight_layout()
+    return axes
+
+
+def plot_dyadic_figure(df: pd.DataFrame, roi: str = "arms", axes=None):
+    """Dyadic interpersonal-coordination metrics by condition (mean +/- SEM) for
+    one ROI -- linear cross-correlation (paper's Fig. 9) and cross-RQA %REC/%DET/
+    Lmax (Fig. 10). ``df`` is :func:`run_reproduction`'s output."""
+    import matplotlib.pyplot as plt
+
+    if axes is None:
+        _, axes = plt.subplots(1, 4, figsize=(16, 4))
+    axes = np.asarray(axes).flatten()
+    sub = df[df["roi"] == roi]
+    for (metric, ylab), ax in zip(
+        [("xcorr_lag0", f"{roi} cross-correlation"), ("cross_perc_recur", f"{roi} %REC"),
+         ("cross_perc_determ", f"{roi} %DET"), ("cross_lmax", f"{roi} cross Lmax")], axes):
         stats = (sub[["condition", metric]].dropna()
                  .groupby("condition", observed=True)[metric].agg(["mean", "sem"])
                  .reindex(C.CONDITION_ORDER))

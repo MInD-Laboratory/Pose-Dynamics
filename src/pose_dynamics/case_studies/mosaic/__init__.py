@@ -8,6 +8,7 @@ from .reproduce import (
     load_condition_map,
     load_mosaic_file,
     parse_file,
+    plot_dyadic_figure,
     plot_individual_figure,
     preprocess_pose,
     process_dyad,
@@ -33,4 +34,5 @@ __all__ = [
     "process_dyad",
     "run_reproduction",
     "plot_individual_figure",
+    "plot_dyadic_figure",
 ]
