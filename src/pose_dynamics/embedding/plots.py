@@ -53,8 +53,6 @@ def _plot_ami(ax, ev: EmbeddingEvidence):
 
     lo, hi = ev.tau_grid
     ax.axvspan(lo, hi, color="0.85", alpha=0.5, zorder=0, label=f"grid τ∈[{lo},{hi}]")
-    ax.axvline(ev.proposed_tau, color="tab:red", ls="--", lw=1.6,
-               label=f"proposed τ={ev.proposed_tau}")
     ax.set_xlabel("delay τ (frames)")
     ax.set_ylabel("AMI (bits)")
     ax.set_title(f"Average Mutual Information  (n={ev.n_signals_used} signals)")
@@ -76,8 +74,6 @@ def _plot_fnn(ax, ev: EmbeddingEvidence):
     lo, hi = ev.m_grid
     ax.axvspan(lo, hi, color="0.85", alpha=0.5, zorder=0, label=f"grid m∈[{lo},{hi}]")
     ax.axhline(ev.fnn_tol, color="0.4", ls=":", lw=1.2, label=f"tol {ev.fnn_tol:.0f}%")
-    ax.axvline(ev.proposed_m, color="tab:red", ls="--", lw=1.6,
-               label=f"proposed m={ev.proposed_m}")
     ax.set_xlabel("embedding dimension m")
     ax.set_ylabel("false nearest neighbours (%)")
     ax.set_title(f"False Nearest Neighbours  (τ={ev.fnn_tau})")
@@ -106,12 +102,12 @@ def plot_embedding_variability(evidence: EmbeddingEvidence, group_by: str, axes=
         if np.isfinite(m):
             groups_m[key].append(m)
 
-    _grouped_box(ax_tau, groups_tau, evidence.proposed_tau, evidence.tau_grid, group_by, "τ")
-    _grouped_box(ax_m, groups_m, evidence.proposed_m, evidence.m_grid, group_by, "m")
+    _grouped_box(ax_tau, groups_tau, evidence.tau_grid, group_by, "τ")
+    _grouped_box(ax_m, groups_m, evidence.m_grid, group_by, "m")
     return ax_tau, ax_m
 
 
-def _grouped_box(ax, groups: dict[Any, list[float]], proposed, grid, group_by, symbol):
+def _grouped_box(ax, groups: dict[Any, list[float]], grid, group_by, symbol):
     keys = list(groups.keys())
     data = [groups[k] for k in keys]
     if not data:
@@ -124,10 +120,8 @@ def _grouped_box(ax, groups: dict[Any, list[float]], proposed, grid, group_by, s
         jitter = (np.random.default_rng(i).uniform(-0.15, 0.15, size=len(vals)))
         ax.scatter(positions[i] + jitter, vals, s=8, color="tab:blue", alpha=0.4, zorder=3)
     ax.axhspan(grid[0], grid[1], color="0.85", alpha=0.5, zorder=0)
-    ax.axhline(proposed, color="tab:red", ls="--", lw=1.4, label=f"proposed {symbol}={proposed}")
     ax.set_xticks(positions)
     ax.set_xticklabels([str(k) for k in keys], rotation=45, ha="right", fontsize=7)
     ax.set_xlabel(group_by)
     ax.set_ylabel(f"per-signal suggested {symbol}")
     ax.set_title(f"Variability of {symbol} across {group_by}")
-    ax.legend(loc="upper right", fontsize=8)
