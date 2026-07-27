@@ -52,7 +52,7 @@ def test_resolve_rois_maps_names_to_body25_groups():
 def test_resolve_rois_excludes_lower_body_keypoints():
     # Lower-body points (legs/feet) are occluded/unreliable in a seated
     # conversation and must NOT be pulled into the Procrustes fit -- resolve_rois
-    # restricts to cathy-dev's curated `SELECTED_KEYPOINTS`, not every header column.
+    # restricts to the curated `SELECTED_KEYPOINTS`, not every header column.
     cols = []
     for n in ["Nose", "RShoulder", "RElbow", "RWrist", "LShoulder", "LElbow", "LWrist",
               "Neck", "MidHip", "REye", "LEye", "rightOuterEyeBrow",

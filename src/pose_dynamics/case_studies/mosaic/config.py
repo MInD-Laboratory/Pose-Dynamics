@@ -22,8 +22,8 @@ FILTER_ORDER = 4
 # y -- consistent with a centre, not top-left, origin). So only the scaling half of
 # the paper's normalization step happens here; re-translating already-centred input
 # (mode="centered") would corrupt it. "scale_only" divides by the *full* 1920x1080
-# (not half), matching cathy-dev's actual executed spatial.scale.method="screen"
-# (src/pose_dynamics/preprocess/spatial.py) -- confirmed against the real dataset:
+# (not half), matching the original prototype's actual executed screen-scaling
+# behavior -- confirmed against the real dataset:
 # global extremes across all 550 files are x in [-479.8, 1510.9], y in [-925.3,
 # 481.0], comfortably inside [-1,1] under full-dimension division (would exceed it
 # under half-dimension division, e.g. an occluded knee's y as low as -925).
@@ -46,9 +46,9 @@ ROI_EXACT = {
 # prototype's name-based sets: Eye/Pupil/Chin/Nostril/Lip).
 CENTRE_FACE_SUBSTRINGS = ["Eye", "Pupil", "Chin", "Nostril", "Lip"]
 
-# --- curated alignment/feature keypoint set (cathy-dev's `selection.keypoints`,
-# preprocess.yaml) --- deliberately excludes lower-body points (hips, knees,
-# ankles, toes, heels): they're occluded/unreliable in a seated conversation and
+# --- curated alignment/feature keypoint set --- deliberately excludes
+# lower-body points (hips, knees, ankles, toes, heels): they're occluded/unreliable
+# in a seated conversation and
 # must not influence the Procrustes fit. In this design every entry here ends up
 # in one of the three ROIs (the face landmarks all match a CENTRE_FACE_SUBSTRINGS
 # substring), so this list and the ROI union happen to coincide exactly.

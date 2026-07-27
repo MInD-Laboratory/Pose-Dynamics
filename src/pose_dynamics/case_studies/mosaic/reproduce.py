@@ -71,7 +71,7 @@ def resolve_rois(columns: list[str]) -> tuple[list[str], dict[str, list[int]]]:
 
     Returns ``(keypoint_names, roi_index_map)``. ``keypoint_names`` is
     ``C.SELECTED_KEYPOINTS`` restricted to what's actually present in this file's
-    header -- cathy-dev's curated alignment/feature selection, which deliberately
+    header -- a curated alignment/feature selection that deliberately
     excludes lower-body points (hips, knees, ankles, toes, heels) that are
     occluded/unreliable in a seated conversation and must not influence the
     Procrustes fit in :func:`windowed_align`. In this design every entry here
@@ -138,14 +138,13 @@ def preprocess_pose(seq: PoseSequence) -> PoseSequence:
     """Mask -> interpolate -> filter -> downsample -> centre-on-nose -> normalize
     (Case 2 settings).
 
-    The nose-anchor centering matches cathy-dev's actual ``apply_spatial`` stage
-    (``centering.method="anchor_keypoint"``): it subtracts *that same frame's*
-    nose position from every keypoint, per frame -- not a single per-window
-    constant -- removing frame-to-frame head-translation jitter continuously
-    throughout the trial, before :func:`windowed_align` ever sees the data. (Order
-    relative to filtering/scaling doesn't matter -- both are linear and commute
-    with this per-frame subtraction -- so it's placed here for one shared code
-    path rather than split across two stages like cathy-dev's does.) A frame
+    The nose-anchor centering subtracts *that same frame's* nose position from
+    every keypoint, per frame -- not a single per-window constant -- removing
+    frame-to-frame head-translation jitter continuously throughout the trial,
+    before :func:`windowed_align` ever sees the data. (Order relative to
+    filtering/scaling doesn't matter -- both are linear and commute with this
+    per-frame subtraction -- so it's placed here for one shared code path rather
+    than split across two stages.) A frame
     where the nose itself is invalid propagates NaN to every keypoint in that
     frame, same principle as :func:`windowed_align`'s whole-window NaN when the
     nose is missing for an entire window.
@@ -193,15 +192,15 @@ def windowed_align(seq: PoseSequence, template: np.ndarray) -> list[tuple[Window
     within a specific window, so alignment happens per-window rather than once over
     the whole sequence (contrast Case 1's single global-template, per-frame fit).
 
-    Following the paper, coordinates are first centred on the window's mean nose
-    position -- a per-window constant offset that is mathematically absorbed by
+    Coordinates are also centred here on the window's mean nose position before
+    the fit -- a per-window constant offset that is mathematically absorbed by
     ``procrustes_uniform``'s own centering (any constant shift of the input cancels
-    out of the fit), but kept explicit here to match the published method text.
-    Since :func:`preprocess_pose` already centres every frame on its *own* nose
-    position, the nose is already ~(0, 0) by the time it gets here, making this
-    step a harmless no-op in practice -- left in place because it costs nothing
-    and keeps this function correct on its own even if called on data that
-    skipped that upstream step. If the nose has zero valid frames across the
+    out of the fit) and, separately, already zeroed out by :func:`preprocess_pose`'s
+    whole-trial per-frame nose-anchor centering -- the paper's actual jitter-removal
+    step -- by the time this function runs, making it a harmless no-op in practice.
+    It's kept only so this function stays correct in isolation if it's ever called
+    on data that skipped that upstream centering, not because the published method
+    describes it as a distinct step. If the nose has zero valid frames across the
     whole window, centering is undefined and the *entire* window is set to NaN.
 
     A keypoint is used in the fit only if it is finite in at least
