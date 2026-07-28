@@ -166,10 +166,15 @@ def preprocess_pose(seq: PoseSequence) -> PoseSequence:
 
 
 def build_global_template(sequences: list[PoseSequence]) -> np.ndarray:
-    """Global template = mean ROI-keypoint pose (normalized coords) across the
-    dataset (paper: "a single global template by averaging the position of each ROI
-    keypoint across all valid frames in the dataset"). ``sequences`` must already be
-    preprocessed (see :func:`preprocess_pose`) and share the same ``keypoint_names``.
+    """Global template = mean ROI-keypoint pose (normalized coords), pooled across
+    every valid frame in every given sequence (paper: "a single global template by
+    averaging the position of each ROI keypoint across all valid frames in the
+    dataset"). This is a single frame-count-weighted average over all sequences
+    combined, not a mean of per-file means -- a file with more valid frames
+    contributes proportionally more, matching "across all valid frames" literally
+    rather than giving every file equal weight regardless of length. ``sequences``
+    must already be preprocessed (see :func:`preprocess_pose`) and share the same
+    ``keypoint_names``.
     """
     names = sequences[0].keypoint_names
     for seq in sequences[1:]:
@@ -179,8 +184,14 @@ def build_global_template(sequences: list[PoseSequence]) -> np.ndarray:
                 "global Procrustes template; got a mismatch against the first "
                 "sampled file."
             )
-    per_file = [np.nanmean(seq.coords, axis=0) for seq in sequences]  # each (K, 2)
-    return np.nanmean(np.stack(per_file, axis=0), axis=0)
+    d = sequences[0].coords.shape[-1]
+    total = np.zeros((len(names), d))
+    count = np.zeros((len(names), d))
+    for seq in sequences:
+        finite = np.isfinite(seq.coords)
+        total += np.where(finite, seq.coords, 0.0).sum(axis=0)
+        count += finite.sum(axis=0)
+    return total / count
 
 
 def windowed_align(seq: PoseSequence, template: np.ndarray) -> list[tuple[Window, np.ndarray]]:
@@ -286,7 +297,7 @@ def run_individual(
     files: list[str | Path],
     conditions_csv: str | Path | None = None,
     template: np.ndarray | None = None,
-    template_sample: int = C.TEMPLATE_SAMPLE,
+    template_sample: int | None = C.TEMPLATE_SAMPLE,
     progress: bool = True,
 ) -> pd.DataFrame:
     """Per-window individual ROI linear metrics (one participant) -- RMS, mean,
@@ -301,14 +312,17 @@ def run_individual(
 
     Applies windowed Procrustes alignment before ROI reduction (see
     :func:`windowed_align`), matching the published method. If ``template`` isn't
-    supplied, it's built from a sample of ``files`` (see
-    :func:`build_global_template`) -- pass an explicit ``template`` (e.g. built once
-    and shared with :func:`run_reproduction`) for a single dataset-wide template.
+    supplied, it's built from ``files`` (see :func:`build_global_template`) -- by
+    default every file, pooling all valid frames across the dataset (the paper's
+    "across all valid frames in the dataset"); pass ``template_sample`` to cap this
+    to the first N files for faster iteration, or pass an explicit ``template``
+    (e.g. built once and shared with :func:`run_reproduction`) for a single
+    dataset-wide template.
     """
     cond_map = load_condition_map(conditions_csv)
 
     if template is None:
-        sample = files[: min(template_sample, len(files))]
+        sample = files if template_sample is None else files[: min(template_sample, len(files))]
         sample_seqs = [preprocess_pose(load_mosaic_file(f)[0]) for f in sample]
         template = build_global_template(sample_seqs)
         del sample_seqs
@@ -393,16 +407,18 @@ def run_reproduction(
     data_dir: str | Path,
     conditions_csv: str | Path | None = None,
     template: np.ndarray | None = None,
-    template_sample: int = C.TEMPLATE_SAMPLE,
+    template_sample: int | None = C.TEMPLATE_SAMPLE,
     progress: bool = True,
 ) -> pd.DataFrame:
     """Full dyadic reproduction. Requires both camera files per session-trial.
 
     Applies windowed Procrustes alignment (see :func:`process_dyad`) before ROI
-    reduction. If ``template`` isn't supplied, it's built from a sample of the
-    discovered session-trials (see :func:`build_global_template`) -- pass an
-    explicit ``template`` (e.g. shared with :func:`run_individual`) for a single
-    dataset-wide template.
+    reduction. If ``template`` isn't supplied, it's built from the discovered
+    session-trials (see :func:`build_global_template`) -- by default every one,
+    pooling all valid frames across the dataset (the paper's "across all valid
+    frames in the dataset"); pass ``template_sample`` to cap this to the first N
+    session-trials for faster iteration, or pass an explicit ``template`` (e.g.
+    shared with :func:`run_individual`) for a single dataset-wide template.
     """
     data_dir = Path(data_dir)
     cond_map = load_condition_map(conditions_csv)
@@ -421,7 +437,8 @@ def run_reproduction(
         )
 
     if template is None:
-        sample_files = [by_key[k][cam] for k in keys[:template_sample] for cam in ("left", "right")]
+        sample_keys = keys if template_sample is None else keys[:template_sample]
+        sample_files = [by_key[k][cam] for k in sample_keys for cam in ("left", "right")]
         sample_seqs = [preprocess_pose(load_mosaic_file(f)[0]) for f in sample_files]
         template = build_global_template(sample_seqs)
         del sample_seqs

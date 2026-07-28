@@ -114,6 +114,27 @@ def test_build_global_template_averages_and_checks_consistency():
         build_global_template([seqs[0], mismatched])
 
 
+def test_build_global_template_is_frame_weighted_not_file_weighted():
+    # A file with more valid frames must contribute proportionally more than a
+    # mean-of-per-file-means would give it -- guards against reverting to
+    # equal-per-file weighting.
+    from pose_dynamics.data import PoseSequence
+    from pose_dynamics.case_studies.mosaic.reproduce import build_global_template
+
+    names = ["Nose", "RShoulder"]
+    short = PoseSequence(
+        coords=np.tile(np.array([[0.0, 0.0], [1.0, 0.0]]), (1, 1, 1)),
+        keypoint_names=names, frame_rate=10.0,
+    )
+    long = PoseSequence(
+        coords=np.tile(np.array([[10.0, 0.0], [11.0, 0.0]]), (9, 1, 1)),
+        keypoint_names=names, frame_rate=10.0,
+    )
+    template = build_global_template([short, long])
+    # Frame-weighted: (1*0 + 9*10)/10 = 9.0; mean-of-means would give (0+10)/2 = 5.0.
+    np.testing.assert_allclose(template[:, 0], [9.0, 10.0], atol=1e-9)
+
+
 def test_windowed_align_recovers_rotation_scale_and_translation():
     from pose_dynamics.data import PoseSequence
     from pose_dynamics.case_studies.mosaic.reproduce import windowed_align

@@ -30,7 +30,10 @@ FILTER_ORDER = 4
 NORMALIZE_MODE = "scale_only"
 
 # --- windowed Procrustes alignment (paper: single global template, per-window fit) ---
-TEMPLATE_SAMPLE = 24          # files used to build the global Procrustes template
+# None = build the template from every file, pooling all valid frames across the
+# whole dataset (paper: "averaging...across all valid frames in the dataset").
+# Set an int to cap the file count for faster iteration during development.
+TEMPLATE_SAMPLE = None
 MIN_KEYPOINTS_FOR_FIT = 4     # minimum valid keypoints to attempt a window's fit
 MIN_VALID_FRAC_PER_KP = 0.20  # a keypoint needs finite coords in >= this fraction of a window's frames to be used
 
