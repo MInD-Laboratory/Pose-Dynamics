@@ -4,12 +4,12 @@ Computational-cost benchmark for pose-dynamics.
 Two parts:
   1. Microbenchmarks (synthetic): RQA and MdRQA scaling with signal length N and
      dimensionality, and the fixed-%REC (bisection) multiplier.
-  2. End-to-end per-trial cost for Case 1 (MATB) and Case 3 (Mirror Game), if the
-     data directories are given.
+  2. End-to-end per-trial cost for Case 1 (MATB), Case 2 (MOSAIC) and Case 3
+     (Mirror Game), if the data directories are given.
 
 Usage:
-    python benchmarks/benchmark.py                      # microbenchmarks only
-    python benchmarks/benchmark.py --matb DIR --mg DIR  # + end-to-end
+    python benchmarks/benchmark.py                          # microbenchmarks only
+    python benchmarks/benchmark.py --matb DIR --mosaic DIR --mg DIR   # + end-to-end
 """
 from __future__ import annotations
 
@@ -85,6 +85,44 @@ def case1(matb_dir):
     print(f"  per trial {total:.2f}s  ->  x216 ~ {total * 216 / 60:.1f} min")
 
 
+def case2(mosaic_dir):
+    from pose_dynamics.case_studies.mosaic import (
+        build_global_template,
+        load_condition_map,
+        load_mosaic_file,
+        parse_file,
+        preprocess_pose,
+        process_dyad,
+    )
+
+    files = {parse_file(f)[2]: f for f in sorted(glob.glob(f"{mosaic_dir}/S*_T1_*.csv"))
+             if "/._" not in f}
+    a = time.perf_counter()
+    right, roi_map = load_mosaic_file(files["right"])
+    left, _ = load_mosaic_file(files["left"])
+    t_load = time.perf_counter() - a
+
+    # process_dyad preprocesses internally; time it separately to report the split.
+    a = time.perf_counter(); preprocess_pose(right); preprocess_pose(left)
+    t_prep = time.perf_counter() - a
+
+    session, trial, _ = parse_file(files["right"])
+    cond = load_condition_map().get((session, trial), "unknown")
+    tmpl = build_global_template([right, left])
+    a = time.perf_counter()
+    rows = process_dyad(right, left, roi_map, cond, tmpl, session=session, trial=trial)
+    t_proc = time.perf_counter() - a
+
+    n = min(right.n_frames, left.n_frames)
+    total = t_load + t_proc
+    print("\n=== CASE 2 (MOSAIC): one dyad-trial ===")
+    print(f"  frames={n}, rois={len(roi_map)}, window-rows={len(rows)}")
+    print(f"  load x2 {t_load:.2f}s | preprocess x2 {t_prep:.2f}s"
+          f" | align+features+CRQA {t_proc:.2f}s")
+    print(f"  per dyad-trial {total:.2f}s  (preprocess is included in the last column)"
+          f"  ->  x276 ~ {total * 276 / 60:.1f} min")
+
+
 def case3(mg_dir):
     import re
     from pose_dynamics.case_studies.mirror_game import load_and_resample
@@ -110,10 +148,13 @@ def case3(mg_dir):
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--matb")
+    ap.add_argument("--mosaic")
     ap.add_argument("--mg")
     args = ap.parse_args()
     microbenchmarks()
     if args.matb:
         case1(args.matb)
+    if args.mosaic:
+        case2(args.mosaic)
     if args.mg:
         case3(args.mg)

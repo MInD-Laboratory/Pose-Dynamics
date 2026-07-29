@@ -25,13 +25,15 @@ computational constraint.
 | Case | Signal | Frames | Load | Preprocess | Features + RQA | Per trial | Full dataset |
 |---|---|---|---|---|---|---|---|
 | 1 — MATB (2D facial) | 1 participant, windowed | 28,835 | 0.25 s | 0.52 s | 10.66 s | **11.4 s** | ≈ 41 min (216 trials) |
+| 2 — MOSAIC (2D upper body) | dyad, 3 ROIs, windowed | 18,000 | 0.76 s | 0.61 s | 1.03 s | **1.8 s** | ≈ 8 min (276 dyad-trials) |
 | 3 — Mirror Game (3D full body) | dyad, 5 keypoints | 1,058 | 0.02 s | 0.01 s | 0.20 s | **0.23 s** | ≈ 50 s (210 dyad-trials) |
+
+For Case 2, preprocessing happens inside `process_dyad`, so its time is counted
+once in the "Features + RQA" column and shown separately only for reference.
 
 Case 1 is the more expensive of the two despite using a smaller state space,
 because its trials are ~16 minutes long and every window is analysed
 separately — a direct consequence of the quadratic term.
-
-Case 2 (MOSAIC) is not yet covered; see the open pull request adding it.
 
 ## Scaling with recording length and dimensionality
 
