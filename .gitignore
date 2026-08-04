@@ -28,7 +28,7 @@ data/
 .claude/
 
 # Figures
-artifacts/fig*
+artifacts*
 
 # Data
 *.csv
