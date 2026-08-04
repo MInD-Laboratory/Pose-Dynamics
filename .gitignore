@@ -33,3 +33,5 @@ artifacts/fig*
 # Data
 *.csv
 mosaic_run.py
+# Case 2 reproduction results cache (fingerprint-keyed parquet)
+notebooks/case2_cache/
