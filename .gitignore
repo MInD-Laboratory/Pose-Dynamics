@@ -21,8 +21,9 @@ manuscript.tex
 numeric_inventory.md
 package_plan.md
 
-# Docker user-data mount
-data/
+# Docker user-data mount (repo root only — leading slash keeps this from
+# matching packaged data dirs like src/pose_dynamics/data/)
+/data/
 
 # Local tooling
 .claude/
@@ -32,8 +33,10 @@ artifacts*
 paper/
 figs/
 
-# Data
+# Data — research inputs stay out of the repo, but the CSVs that ship inside
+# the wheel (see [tool.hatch.build.targets.wheel] artifacts) must be tracked.
 *.csv
+!src/pose_dynamics/**/*.csv
 mosaic_run.py
 # Case 2 reproduction results cache (fingerprint-keyed parquet)
 notebooks/case2_cache/
