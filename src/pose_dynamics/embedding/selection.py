@@ -101,8 +101,18 @@ class EmbeddingParams:
         are ignored.
     chosen_by : str
         Provenance of the choice (``"human_confirmed"`` by default).
+    proposed_tau_range : tuple of int or None
+        The delay interval the evidence supported. This is the framework's actual
+        proposal for ``τ``: the AMI rules disagree on quasi-periodic pose signals, so
+        the defensible output is an interval rather than a point. ``None`` when the
+        params were built directly rather than via
+        :meth:`EmbeddingEvidence.commit`.
     proposed_tau, proposed_m : int or None
-        What the framework proposed, for the record.
+        What the framework proposed, for the record. ``proposed_tau`` is a single-point
+        reading of the aggregate curve and one member of ``proposed_tau_range``; prefer
+        the range when reporting. ``m`` has no equivalent range because its selection is
+        directional -- under-embedding is riskier than over-embedding -- so a lower
+        bound is the meaningful quantity.
     n_signals : int
         How many signals the evidence was based on.
     notes : str
@@ -113,6 +123,7 @@ class EmbeddingParams:
     m: int
     multivariate: bool = False
     chosen_by: str = "human_confirmed"
+    proposed_tau_range: tuple[int, int] | None = None
     proposed_tau: int | None = None
     proposed_m: int | None = None
     n_signals: int = 0
@@ -134,6 +145,8 @@ class EmbeddingParams:
             "m": self.m,
             "multivariate": self.multivariate,
             "chosen_by": self.chosen_by,
+            # the range is the proposal; proposed_tau is a single-point reading of it
+            "proposed_tau_range": self.proposed_tau_range,
             "proposed_tau": self.proposed_tau,
             "proposed_m": self.proposed_m,
             "n_signals": self.n_signals,
@@ -260,6 +273,38 @@ def _clamp(value: int | None, lo: int, hi: int) -> tuple[int, bool]:
     return clamped, clamped != value
 
 
+def _tau_range(tau_info: dict[str, Any], per_tau: np.ndarray,
+               tau_grid: tuple[int, int]) -> tuple[tuple[int, int], tuple[int, int] | None]:
+    """Span of the delay estimators that produced a value, clamped into the grid.
+
+    The three AMI rules answer genuinely different questions -- where the curve first
+    turns, where its descent flattens, and where it falls to a fixed fraction of its
+    initial value -- so on quasi-periodic pose signals they routinely disagree by a
+    factor of two or more. Reporting their span, rather than picking one, states what
+    the evidence actually supports: any delay inside the interval is defensible, and
+    the width is itself the honest measure of how weakly the data constrain the choice.
+
+    The per-signal median is included so between-signal disagreement widens the
+    interval too, not just disagreement between rules on the aggregate curve.
+
+    Returns ``(clamped, raw)``, where ``raw`` is the unclamped span and is ``None``
+    when clamping changed nothing. Both are reported: clamping to the presentation
+    grid would otherwise make the interval look like a property of the grid rather
+    than of the data.
+    """
+    lo_g, hi_g = tau_grid
+    cands = [tau_info.get(k) for k in ("first_local_min", "plateau", "relative")]
+    finite = per_tau[np.isfinite(per_tau)]
+    if finite.size:
+        cands.append(int(round(float(np.median(finite)))))
+    vals = [int(c) for c in cands if c is not None]
+    if not vals:                       # nothing resolved: fall back to the whole grid
+        return (lo_g, hi_g), None
+    raw = (min(vals), max(vals))
+    clamped = (max(lo_g, min(hi_g, raw[0])), max(lo_g, min(hi_g, raw[1])))
+    return clamped, (raw if raw != clamped else None)
+
+
 # ----------------------------------------------------------------------
 # Evidence object
 # ----------------------------------------------------------------------
@@ -279,6 +324,13 @@ class EmbeddingEvidence:
     tau_grid: tuple[int, int]
     m_grid: tuple[int, int]
     proposed_tau: int
+    #: Span of the delay estimators that returned a value, clamped into ``tau_grid``.
+    #: AMI-based selection does not identify a unique delay -- the local-minimum,
+    #: plateau and relative-crossing rules routinely disagree by a factor of two or
+    #: more on pose signals -- so the defensible output is an interval and any delay
+    #: inside it is supportable. :attr:`proposed_tau` is one point in this interval,
+    #: kept for the commit record; prefer reporting the range.
+    proposed_tau_range: tuple[int, int]
     proposed_m: int
     justification: str
     n_signals_total: int
@@ -300,6 +352,7 @@ class EmbeddingEvidence:
             "n_signals_total": self.n_signals_total,
             "subset_seed": self.subset_seed,
             "proposed_tau": self.proposed_tau,
+            "proposed_tau_range": self.proposed_tau_range,
             "proposed_m": self.proposed_m,
             "fnn_tau": self.fnn_tau,
             "tau_grid": self.tau_grid,
@@ -324,6 +377,15 @@ class EmbeddingEvidence:
                 "make sure the evidence supports it.",
                 stacklevel=2,
             )
+        elif not (self.proposed_tau_range[0] <= tau <= self.proposed_tau_range[1]):
+            # Inside the plotted grid but outside what the estimators actually spanned:
+            # worth saying, since the grid is a presentation choice and the range is not.
+            warnings.warn(
+                f"committed tau={tau} is inside the presented grid but outside the "
+                f"range the delay estimators supported, {list(self.proposed_tau_range)}; "
+                "the plot should show why.",
+                stacklevel=2,
+            )
         if m < self.proposed_m:
             warnings.warn(
                 f"committed m={m} is below the proposed m={self.proposed_m}; "
@@ -335,6 +397,7 @@ class EmbeddingEvidence:
             tau=int(tau),
             m=int(m),
             chosen_by="human_confirmed",
+            proposed_tau_range=tuple(self.proposed_tau_range),
             proposed_tau=self.proposed_tau,
             proposed_m=self.proposed_m,
             n_signals=self.n_signals_used,
@@ -344,7 +407,7 @@ class EmbeddingEvidence:
     def __repr__(self) -> str:
         return (
             f"EmbeddingEvidence(n={self.n_signals_used}, "
-            f"proposed tau={self.proposed_tau}, m={self.proposed_m})"
+            f"tau in {list(self.proposed_tau_range)}, m={self.proposed_m})"
         )
 
 
@@ -460,6 +523,7 @@ def select_embedding(
     agg_tau_info = _suggest_tau(ami_lags, agg_ami, rel_frac)
     raw_tau = agg_tau_info["primary"]
     proposed_tau, tau_clamped = _clamp(raw_tau, *tau_grid)
+    tau_range, tau_range_raw = _tau_range(agg_tau_info, per_tau, tau_grid)
 
     # --- FNN across signals at the proposed tau ---
     tau_for_fnn = int(fnn_tau if fnn_tau is not None else proposed_tau)
@@ -481,7 +545,7 @@ def select_embedding(
     proposed_m, m_clamped = _clamp(raw_m, *m_grid)
 
     justification = _build_justification(
-        agg_tau_info, proposed_tau, tau_clamped, tau_grid,
+        agg_tau_info, proposed_tau, tau_clamped, tau_grid, tau_range, tau_range_raw,
         agg_m_info, proposed_m, m_clamped, m_grid, fnn_tol, tau_for_fnn,
         n_used=len(sigs), n_total=n_total, per_tau=per_tau, per_m=per_m,
     )
@@ -499,6 +563,7 @@ def select_embedding(
         tau_grid=tau_grid,
         m_grid=m_grid,
         proposed_tau=proposed_tau,
+        proposed_tau_range=tau_range,
         proposed_m=proposed_m,
         justification=justification,
         n_signals_total=n_total,
@@ -510,7 +575,7 @@ def select_embedding(
 
 
 def _build_justification(
-    tau_info, proposed_tau, tau_clamped, tau_grid,
+    tau_info, proposed_tau, tau_clamped, tau_grid, tau_range, tau_range_raw,
     m_info, proposed_m, m_clamped, m_grid, fnn_tol, tau_for_fnn,
     n_used, n_total, per_tau, per_m,
 ) -> str:
@@ -527,8 +592,14 @@ def _build_justification(
         f"  - plateau onset (diminishing returns) at lag {tau_info.get('plateau')}.",
         f"  - relative 1/e crossing at lag {tau_info.get('relative')}.",
         f"  - per-signal median suggestion: {tau_med:.1f}.",
-        f"  => proposed tau = {proposed_tau}"
-        + (f" (clamped into grid {tau_grid})" if tau_clamped else "") + ".",
+        f"  => supported range: tau in [{tau_range[0]}, {tau_range[1]}]"
+        + (f" (estimators spanned [{tau_range_raw[0]}, {tau_range_raw[1]}], "
+           f"clamped to grid {list(tau_grid)})" if tau_range_raw else "") + ".",
+        "     The rules above answer different questions, so they disagree; their span "
+        "is what the evidence supports,",
+        "     and its width measures how weakly the data constrain the delay. Any tau "
+        "in the interval is defensible.",
+        f"     Single-point reading of the aggregate curve, for the record: {proposed_tau}.",
         "",
         f"Dimension (m) — FNN diminishing-returns knee at tau={tau_for_fnn}:",
         f"  - knee (elbow of the FNN curve): {m_info.get('knee')}.",
@@ -538,6 +609,8 @@ def _build_justification(
         + (f" (clamped into grid {m_grid})" if m_clamped else "") + ".",
         "",
         "NOTE: these are proposals, not decisions. Inspect the curves and their "
-        "spread, then commit a single (tau, m) with evidence.commit(tau, m).",
+        "spread, then commit a single (tau, m) with evidence.commit(tau, m). The "
+        "analysis needs one delay; the range says which choices the data permit, not "
+        "that the choice can be left open.",
     ]
     return "\n".join(lines)

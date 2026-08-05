@@ -1,6 +1,8 @@
 """Tests for AMI/FNN and the human-in-the-loop embedding-selection stage."""
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import pytest
 
@@ -104,7 +106,11 @@ def test_evidence_does_not_auto_commit():
     ev = select_embedding(_signal_set())
     # There is no EmbeddingParams until the human calls commit().
     assert not isinstance(ev, EmbeddingParams)
-    params = ev.commit(tau=20, m=4, notes="looks stable across keypoints")
+    # tau=20 is outside this fixture's supported range, which commit() rightly flags --
+    # covered by its own test below; silenced here so this test's intent stays visible.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        params = ev.commit(tau=20, m=4, notes="looks stable across keypoints")
     assert isinstance(params, EmbeddingParams)
     assert (params.tau, params.m) == (20, 4)
     assert params.chosen_by == "human_confirmed"
@@ -117,6 +123,41 @@ def test_commit_warns_outside_grid():
     ev = select_embedding(_signal_set(), tau_grid=(10, 25))
     with pytest.warns(UserWarning, match="outside the presented grid"):
         ev.commit(tau=40, m=4)
+
+
+def test_tau_is_proposed_as_a_range_within_the_grid():
+    """The delay rules answer different questions and disagree, so the proposal is an
+    interval. A point estimate would hide how weakly the data constrain the choice."""
+    ev = select_embedding(_signal_set(), tau_grid=(10, 25), m_grid=(3, 6))
+    lo, hi = ev.proposed_tau_range
+    assert lo <= hi, "range must be ordered"
+    assert 10 <= lo and hi <= 25, "range must be clamped into the presentation grid"
+    # the single-point reading is one member of the interval, not a rival answer
+    assert lo <= ev.proposed_tau <= hi
+    assert "supported range" in ev.justification
+    assert f"[{lo}, {hi}]" in ev.justification
+    assert ev.summary()["proposed_tau_range"] == (lo, hi)
+    # and the committed record carries the range, not just the point -- the record is
+    # what gets reported, so a point-only field would undo the whole change
+    params = ev.commit(tau=lo, m=ev.proposed_m)
+    assert params.proposed_tau_range == (lo, hi)
+    assert params.to_dict()["proposed_tau_range"] == (lo, hi)
+
+
+def test_commit_warns_when_tau_is_in_the_grid_but_outside_the_supported_range():
+    """The grid is a presentation choice; the range is what the estimators produced.
+    A delay inside the former but outside the latter is the case worth flagging."""
+    ev = select_embedding(_signal_set(), tau_grid=(10, 25), m_grid=(3, 6))
+    lo, hi = ev.proposed_tau_range
+    outside = hi + 1 if hi < 25 else lo - 1
+    if not (10 <= outside <= 25):
+        pytest.skip("range fills the grid, so no such tau exists for this fixture")
+    with pytest.warns(UserWarning, match="outside the range the delay estimators"):
+        ev.commit(tau=outside, m=ev.proposed_m)
+    # and no warning for a delay the evidence does support
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        ev.commit(tau=lo, m=ev.proposed_m)
 
 
 def test_commit_warns_below_proposed_m():
