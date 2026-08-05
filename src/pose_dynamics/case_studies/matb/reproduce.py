@@ -9,6 +9,7 @@ contain no analysis logic themselves (build plan §10).
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from pathlib import Path
 
 import numpy as np
@@ -16,11 +17,11 @@ import pandas as pd
 
 from ...data.pose_sequence import PoseSequence
 from ...embedding import EmbeddingParams
-from ...features import FeaturePipeline
 from ...preprocessing import butterworth_filter, interpolate_gaps, mask_low_confidence
 from ...rqa import RqaParams, run_auto_rqa, run_cross_rqa
 from ...windowing import make_windows
 from . import config as C
+from .features import REL_IDXS, load_global_template, matb_features
 
 _COL_RE = re.compile(r"^(x|y|prob)(\d+)$")
 CONDITION_ORDER = ["L", "M", "H"]
@@ -67,15 +68,29 @@ def load_matb_file(path: str | Path) -> PoseSequence:
 def preprocess(seq: PoseSequence) -> PoseSequence:
     """Confidence mask -> provisional interpolation -> Butterworth (Case 1 settings)."""
     seq = mask_low_confidence(seq, threshold=C.CONF_THRESHOLD)
-    seq = interpolate_gaps(seq, max_gap=C.INTERP_CAP)
-    seq = butterworth_filter(seq, cutoff_hz=C.FILTER_CUTOFF, order=C.FILTER_ORDER)
+    seq = interpolate_gaps(seq, max_gap=C.INTERP_CAP, edge_fill=True)
+    seq = butterworth_filter(seq, cutoff_hz=C.FILTER_CUTOFF, order=C.FILTER_ORDER, by_segment=True)
     return seq
 
 
-def build_global_template(sequences: list[PoseSequence]) -> np.ndarray:
-    """Global template = mean pose (in normalized coords) across all frames/participants."""
+def build_global_template(sequences: list[PoseSequence] | None = None,
+                          path: str | Path | None = None) -> np.ndarray:
+    """The (23, 2) global template in screen-normalized coordinates.
+
+    Prefers the parent analysis repository's saved ``global_template.csv`` when
+    ``path`` is given (or ``MATB_GLOBAL_TEMPLATE`` is set), since the published
+    results were produced against that exact template. Falls back to the mean
+    relevant-landmark pose across ``sequences``.
+    """
+    import os
+    path = path or os.environ.get("MATB_GLOBAL_TEMPLATE")
+    if path and Path(path).exists():
+        return load_global_template(path)
+    if not sequences:
+        raise ValueError("supply either a template path or sequences to average.")
     scale = np.array([C.IMG_WIDTH, C.IMG_HEIGHT], float)
-    per_file = [np.nanmean(seq.coords / scale, axis=0) for seq in sequences]  # each (K, 2)
+    rel0 = [i - 1 for i in REL_IDXS]
+    per_file = [np.nanmean(seq.coords[:, rel0, :] / scale, axis=0) for seq in sequences]
     return np.nanmean(np.stack(per_file, axis=0), axis=0)
 
 
@@ -93,52 +108,124 @@ def auto_params() -> RqaParams:
     )
 
 
-def cross_params() -> RqaParams:
+def cross_params(min_line: int | None = None) -> RqaParams:
+    """Cross-RQA parameters, optionally overriding the committed ``l_min``.
+
+    The parent analysis repository sets ``minl: 2`` for CRQA while the published
+    methods text quotes a single minimum line length of 4, so the two values need
+    to be comparable side by side.
+    """
     return RqaParams.from_embedding(
         _embedding(), radius_mode="fixed_radius", radius=C.CROSS_RADIUS,
-        rescale=C.RESCALE, min_line=C.CROSS_MINL, norm=C.NORM,
+        rescale=C.RESCALE, min_line=C.CROSS_MINL if min_line is None else min_line,
+        norm=C.NORM,
     )
 
 
 # ----------------------------------------------------------------------
 # Per-sequence processing
 # ----------------------------------------------------------------------
-def process_sequence(seq: PoseSequence, template: np.ndarray) -> list[dict]:
-    """Run the Case-1 pipeline on one preprocessed sequence, returning window rows."""
-    pipe = FeaturePipeline.from_config(C.feature_pipeline_config(template.tolist()))
-    ctx = pipe.run(seq)
-    fs = ctx.features
-    pupil = fs.get("pupil_metric_mag")
-    head = fs.get("head_motion_mag")
+def _assemble_features(seq: PoseSequence, template: np.ndarray) -> dict[str, np.ndarray]:
+    """Derive the Case-1 analysis signals from a preprocessed sequence.
 
-    # linear: pupil velocity (whole-signal derivative), summarized per window
-    vel = np.gradient(pupil) * seq.frame_rate
+    Delegates to :mod:`.features`, which is a faithful port of the parent
+    analysis repository's feature extraction (verified to ~1e-15 against its
+    saved per-frame output). ``template`` is the ``(23, 2)`` global template in
+    screen-normalized coordinates, ordered by ``features.REL_IDXS``.
+    """
+    coords = seq.coords / np.array([C.IMG_WIDTH, C.IMG_HEIGHT], float)
+    return matb_features(coords, template)
 
-    ap, cp = auto_params(), cross_params()
+
+def _summarise(x: np.ndarray, prefix: str, frame_rate: float) -> dict[str, float]:
+    """Linear kinematic summary of one window: stats x position/velocity/acceleration."""
+    vel = np.gradient(x) * frame_rate
+    acc = np.gradient(vel) * frame_rate
+    out: dict[str, float] = {}
+    for arr, order in ((x, "pos"), (vel, "vel"), (acc, "accel")):
+        for stat in C.LINEAR_STATS:
+            key = f"{prefix}_{order}_{stat}"
+            if stat == "rms":
+                out[key] = float(np.sqrt(np.mean(arr ** 2)))
+            else:
+                out[key] = float(getattr(np, stat)(arr))
+    return out
+
+
+def process_sequence(
+    seq: PoseSequence,
+    template: np.ndarray,
+    cross_min_lines: Sequence[int] = (C.CROSS_MINL,),
+) -> list[dict]:
+    """Run the Case-1 pipeline on one preprocessed sequence, returning window rows.
+
+    Each row is one (trial, window) and carries, for every feature in
+    ``C.AUTO_FEATURES``: the linear kinematic summaries and the full auto-RQA
+    metric set; plus the full cross-RQA metric set for every pair in
+    ``C.CROSS_PAIRS``.
+
+    ``cross_min_lines`` gives the cross-RQA minimum line lengths to evaluate. A
+    single value (the default) yields the usual ``crqa_{pair}_{metric}`` columns;
+    several values yield ``crqa_l{n}_{pair}_{metric}`` for each, so that competing
+    ``l_min`` choices can be compared without re-running the auto-RQA.
+    """
+    feats = _assemble_features(seq, template)
+    ap = auto_params()
+    cross_min_lines = tuple(cross_min_lines)
+    cps = [(n, cross_params(n)) for n in cross_min_lines]
+    multi = len(cps) > 1
+
+    # Window inclusion is decided PER SIGNAL, not jointly: a window is analysed
+    # for a given feature whenever that feature is gap-free across it, even if a
+    # different feature has a gap there. Requiring every signal to be
+    # simultaneously valid would restrict all features to the intersection of
+    # their coverage, which changes each feature's effective sample and shifts
+    # its coefficients. This matches the per-column loop in the parent analysis
+    # repository (Pose/process_pose_recurrence.py).
     windows = make_windows(
         seq.n_frames, seq.frame_rate, C.WINDOW_S, C.OVERLAP,
-        valid=np.isfinite(pupil), max_missing=0.5,
+        valid=np.ones(seq.n_frames, bool), max_missing=1.0,
     )
 
     rows = []
     for w in windows:
-        pw = pupil[w.start:w.stop]
-        hw = head[w.start:w.stop]
-        vw = vel[w.start:w.stop]
-        if not np.all(np.isfinite(pw)) or not np.all(np.isfinite(hw)):
-            continue  # skip windows spanning a residual gap
-        auto = run_auto_rqa(pw, ap)
-        cross = run_cross_rqa(hw, pw, cp)
-        rows.append({
+        row: dict[str, float | str | bool | int] = {
             "participant": seq.meta["participant"],
             "condition": seq.meta["condition"],
             "window_index": w.index,
             "flagged": w.flagged,
-            "pupil_metric_vel_rms": float(np.sqrt(np.mean(vw ** 2))),
-            "pupil_metric_perc_recur": auto.metrics["perc_recur"],
-            "pupil_metric_perc_determ": auto.metrics["perc_determ"],
-            "crqa_head_pupil_mag_perc_recur": cross.metrics["perc_recur"],
-        })
+        }
+        # A non-zero err_code means the recurrence routine could not produce a
+        # valid result for that window (e.g. a degenerate distance matrix). Those
+        # windows are dropped rather than carried forward: retaining them admits
+        # metrics the library itself flagged as invalid, and because such windows
+        # are not distributed evenly across conditions, keeping them biases the
+        # condition means. This matches the `if err != 0: continue` guard in the
+        # parent analysis repository.
+        for name in C.AUTO_FEATURES:
+            sig = feats[name][w.start:w.stop]
+            if not np.all(np.isfinite(sig)):
+                continue
+            auto = run_auto_rqa(sig, ap)
+            if auto.err_code != 0:
+                continue
+            row.update(_summarise(sig, name, seq.frame_rate))
+            for key, val in auto.metrics.items():
+                row[f"{name}_{key}"] = val
+        for gaze, head in C.CROSS_PAIRS:
+            gw = feats[gaze][w.start:w.stop]
+            hw = feats[head][w.start:w.stop]
+            if not (np.all(np.isfinite(gw)) and np.all(np.isfinite(hw))):
+                continue
+            for n, cp in cps:
+                cross = run_cross_rqa(hw, gw, cp)
+                if cross.err_code != 0:
+                    continue
+                tag = f"crqa_l{n}" if multi else "crqa"
+                for key, val in cross.metrics.items():
+                    row[f"{tag}_{gaze}_{key}"] = val
+        if len(row) > 4:      # at least one signal contributed
+            rows.append(row)
     return rows
 
 
@@ -146,12 +233,16 @@ def run_reproduction(
     paths: list[str | Path],
     template_sample: int = 24,
     progress: bool = True,
+    cross_min_lines: Sequence[int] = (C.CROSS_MINL,),
 ) -> pd.DataFrame:
     """Load, preprocess, and process a set of MATB files into a tidy results table.
 
     Streams one file at a time to bound memory. The global template is built from
     the first ``template_sample`` files (a mean pose is stable from a modest
     sample); pass ``template_sample >= len(paths)`` to use all files.
+
+    ``cross_min_lines`` is forwarded to :func:`process_sequence`; pass several
+    values to emit cross-RQA at each minimum line length in one pass.
     """
     paths = list(paths)
 
@@ -171,8 +262,128 @@ def run_reproduction(
         seq = preprocess(load_matb_file(p))
         if progress:
             print(f"[analyze {i + 1}/{len(paths)}] {seq.meta['participant']}_{seq.meta['condition']}")
-        rows.extend(process_sequence(seq, template))
+        rows.extend(process_sequence(seq, template, cross_min_lines))
         del seq
+    df = pd.DataFrame(rows)
+    df["condition"] = pd.Categorical(df["condition"], categories=CONDITION_ORDER, ordered=True)
+    return df
+
+
+# ----------------------------------------------------------------------
+# Parameter sensitivity sweeps
+# ----------------------------------------------------------------------
+def _sweep_windows(paths, template_sample: int, progress: bool):
+    """Yield (participant, condition, window_index, {name: window signal})."""
+    paths = list(paths)
+    sample = paths[: min(template_sample, len(paths))]
+    template = build_global_template([preprocess(load_matb_file(p)) for p in sample])
+    needed = set(C.AUTO_FEATURES) | {b for _, b in C.CROSS_PAIRS}
+    for i, p in enumerate(paths):
+        seq = preprocess(load_matb_file(p))
+        if progress:
+            print(f"[sweep {i + 1}/{len(paths)}] {seq.meta['participant']}_{seq.meta['condition']}")
+        feats = _assemble_features(seq, template)
+        for w in make_windows(seq.n_frames, seq.frame_rate, C.WINDOW_S, C.OVERLAP,
+                              valid=np.isfinite(feats["pupil_metric_mag"]), max_missing=0.5):
+            cut = {n: feats[n][w.start:w.stop] for n in needed}
+            if all(np.all(np.isfinite(v)) for v in cut.values()):
+                yield seq.meta["participant"], seq.meta["condition"], w.index, cut
+
+
+def run_embedding_sweep(
+    paths: list[str | Path],
+    taus: list[int] | None = None,
+    ms: list[int] | None = None,
+    features: list[str] | None = None,
+    template_sample: int = 24,
+    progress: bool = True,
+) -> pd.DataFrame:
+    """Auto- and cross-RQA across a grid of embedding delays and dimensions.
+
+    Asks whether the Case-1 condition effects depend on the committed
+    ``(tau, m) = (20, 4)``. Radii are held at the committed values (``AUTO_RADIUS``
+    for auto-RQA, ``CROSS_RADIUS`` for cross-RQA); ``run_radius_sweep`` varies
+    those instead. One row per (participant, condition, window, feature, tau, m).
+    """
+    taus = taus or [10, 15, 20, 25, 30]
+    ms = ms or [3, 4, 5, 6]
+    features = features or ["pupil_metric_mag"]
+    rows = []
+    for participant, condition, widx, cut in _sweep_windows(paths, template_sample, progress):
+        n = len(cut["pupil_metric_mag"])
+        for tau in taus:
+            for m in ms:
+                if n - (m - 1) * tau < 100:      # too little series left to embed
+                    continue
+                emb = EmbeddingParams(tau=tau, m=m)
+                ap = RqaParams.from_embedding(
+                    emb, radius_mode="fixed_radius", radius=C.AUTO_RADIUS,
+                    rescale=C.RESCALE, theiler=C.AUTO_THEILER, min_line=C.AUTO_MINL, norm=C.NORM)
+                cp = RqaParams.from_embedding(
+                    emb, radius_mode="fixed_radius", radius=C.CROSS_RADIUS,
+                    rescale=C.RESCALE, min_line=C.CROSS_MINL, norm=C.NORM)
+                base = {"participant": participant, "condition": condition,
+                        "window_index": widx, "tau": tau, "m": m}
+                for name in features:
+                    res = run_auto_rqa(cut[name], ap)
+                    if res.err_code != 0:      # same guard as ``process_sequence``
+                        continue
+                    rows.append({**base, "analysis": "auto", "feature": name,
+                                 **{k: float(v) for k, v in res.metrics.items()}})
+                for gaze, head in C.CROSS_PAIRS:
+                    if gaze not in features:
+                        continue
+                    res = run_cross_rqa(cut[head], cut[gaze], cp)
+                    if res.err_code != 0:
+                        continue
+                    rows.append({**base, "analysis": "cross", "feature": gaze,
+                                 **{k: float(v) for k, v in res.metrics.items()}})
+    df = pd.DataFrame(rows)
+    df["condition"] = pd.Categorical(df["condition"], categories=CONDITION_ORDER, ordered=True)
+    return df
+
+
+def run_radius_sweep(
+    paths: list[str | Path],
+    radii: list[float] | None = None,
+    features: list[str] | None = None,
+    template_sample: int = 24,
+    progress: bool = True,
+) -> pd.DataFrame:
+    """Auto- and cross-RQA across a grid of recurrence radii at the committed (tau, m).
+
+    The companion to :func:`run_embedding_sweep`. Because a fixed-radius result
+    depends on the threshold chosen, this asks whether the condition effects hold
+    across the plausible range rather than only at the committed radius.
+    """
+    radii = radii or [0.15, 0.20, 0.25, 0.30, 0.35, 0.40]
+    features = features or ["pupil_metric_mag"]
+    emb = _embedding()
+    rows = []
+    for participant, condition, widx, cut in _sweep_windows(paths, template_sample, progress):
+        for radius in radii:
+            ap = RqaParams.from_embedding(
+                emb, radius_mode="fixed_radius", radius=radius, rescale=C.RESCALE,
+                theiler=C.AUTO_THEILER, min_line=C.AUTO_MINL, norm=C.NORM)
+            cp = RqaParams.from_embedding(
+                emb, radius_mode="fixed_radius", radius=radius, rescale=C.RESCALE,
+                min_line=C.CROSS_MINL, norm=C.NORM)
+            base = {"participant": participant, "condition": condition,
+                    "window_index": widx, "radius": radius}
+            for name in features:
+                res = run_auto_rqa(cut[name], ap)
+                if res.err_code != 0:          # same guard as ``process_sequence``
+                    continue
+                rows.append({**base, "analysis": "auto", "feature": name,
+                             **{k: float(v) for k, v in res.metrics.items()}})
+            for gaze, head in C.CROSS_PAIRS:
+                if gaze not in features:
+                    continue
+                res = run_cross_rqa(cut[head], cut[gaze], cp)
+                if res.err_code != 0:
+                    continue
+                rows.append({**base, "analysis": "cross", "feature": gaze,
+                             **{k: float(v) for k, v in res.metrics.items()}})
     df = pd.DataFrame(rows)
     df["condition"] = pd.Categorical(df["condition"], categories=CONDITION_ORDER, ordered=True)
     return df
@@ -182,10 +393,10 @@ def run_reproduction(
 # Figure
 # ----------------------------------------------------------------------
 _PANELS = [
-    ("pupil_metric_vel_rms", "Avg Pupil Velocity"),
-    ("pupil_metric_perc_recur", "Avg Pupil %REC"),
-    ("crqa_head_pupil_mag_perc_recur", "Cross Gaze-Head %REC"),
-    ("pupil_metric_perc_determ", "Avg Pupil %DET"),
+    ("pupil_metric_mag_vel_rms", "Avg Pupil Velocity"),
+    ("pupil_metric_mag_perc_recur", "Avg Pupil %REC"),
+    ("crqa_pupil_metric_mag_perc_recur", "Cross Gaze-Head %REC"),
+    ("pupil_metric_mag_perc_determ", "Avg Pupil %DET"),
 ]
 
 

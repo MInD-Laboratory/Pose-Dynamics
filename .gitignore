@@ -29,6 +29,8 @@ data/
 
 # Figures
 artifacts/fig*
+paper/
+figs/
 
 # Data
 *.csv

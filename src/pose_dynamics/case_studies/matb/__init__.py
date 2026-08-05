@@ -8,6 +8,8 @@ from .reproduce import (
     plot_case1_figure,
     preprocess,
     process_sequence,
+    run_embedding_sweep,
+    run_radius_sweep,
     run_reproduction,
 )
 
@@ -18,5 +20,7 @@ __all__ = [
     "build_global_template",
     "process_sequence",
     "run_reproduction",
+    "run_embedding_sweep",
+    "run_radius_sweep",
     "plot_case1_figure",
 ]

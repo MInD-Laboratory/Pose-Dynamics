@@ -29,6 +29,7 @@ def butterworth_filter(
     cutoff_hz: float,
     order: int = 4,
     btype: str = "low",
+    by_segment: bool = False,
 ) -> PoseSequence:
     """Apply a zero-phase Butterworth filter, preserving missing-data gaps.
 
@@ -42,6 +43,10 @@ def butterworth_filter(
         Filter order (default 4).
     btype : str
         Filter type passed to ``scipy.signal.butter`` (default ``"low"``).
+    by_segment : bool
+        Filter each contiguous finite run independently instead of temporarily
+        filling gaps and filtering the whole series. Matters only when gaps were
+        left unfilled; see the implementation note. Off by default.
 
     Returns
     -------
@@ -63,22 +68,47 @@ def butterworth_filter(
     T = seq.n_frames
     flat = seq.coords.reshape(T, -1)          # (T, K*D)
     nan_flat = ~np.isfinite(flat)
-
-    # Temporary fill for continuity: forward then backward fill each channel.
-    filled = pd.DataFrame(flat).ffill().bfill().to_numpy()
-
     out = flat.copy()
-    # Channels that had at least one observed sample are now fully finite and can
-    # be filtered; channels that were entirely missing stay NaN.
-    valid_cols = np.isfinite(filled).all(axis=0)
-    if valid_cols.any():
-        # filtfilt requires the signal to be longer than the edge padding.
-        default_padlen = 3 * max(len(a), len(b))
-        padlen = min(default_padlen, T - 1) if T > 1 else 0
-        filtered = signal.filtfilt(
-            b, a, filled[:, valid_cols], axis=0, padlen=padlen
-        )
-        out[:, valid_cols] = filtered
+
+    if by_segment:
+        # Filter each contiguous finite run independently, leaving runs too short
+        # for filtfilt's edge padding untouched. This differs from the whole-series
+        # mode around gaps that were left unfilled: there, the temporary ffill/bfill
+        # below creates a constant plateau whose smoothing bleeds into the observed
+        # samples on either side. Segment-wise filtering treats each side as its own
+        # signal instead. Case 1 uses this to match its source pipeline.
+        padlen = 3 * (max(len(a), len(b)) - 1)
+        for c in range(flat.shape[1]):
+            col = out[:, c]
+            i = 0
+            while i < T:
+                while i < T and not np.isfinite(col[i]):
+                    i += 1
+                if i >= T:
+                    break
+                j = i
+                while j < T and np.isfinite(col[j]):
+                    j += 1
+                if j - i > padlen:
+                    try:
+                        col[i:j] = signal.filtfilt(b, a, col[i:j])
+                    except ValueError:
+                        pass
+                i = j
+    else:
+        # Temporary fill for continuity: forward then backward fill each channel.
+        filled = pd.DataFrame(flat).ffill().bfill().to_numpy()
+        # Channels that had at least one observed sample are now fully finite and
+        # can be filtered; channels that were entirely missing stay NaN.
+        valid_cols = np.isfinite(filled).all(axis=0)
+        if valid_cols.any():
+            # filtfilt requires the signal to be longer than the edge padding.
+            default_padlen = 3 * max(len(a), len(b))
+            padlen = min(default_padlen, T - 1) if T > 1 else 0
+            filtered = signal.filtfilt(
+                b, a, filled[:, valid_cols], axis=0, padlen=padlen
+            )
+            out[:, valid_cols] = filtered
 
     # Reinstate gaps as missing.
     out[nan_flat] = np.nan
@@ -86,7 +116,9 @@ def butterworth_filter(
 
     return seq.with_stage(
         "butterworth_filter",
-        {"cutoff_hz": float(cutoff_hz), "order": int(order), "btype": btype, "fs": float(fs)},
+        {"cutoff_hz": float(cutoff_hz), "order": int(order), "btype": btype,
+         "fs": float(fs), "by_segment": bool(by_segment)},
         coords=coords,
-        note=f"zero-phase order-{order} {btype}-pass at {cutoff_hz} Hz",
+        note=f"zero-phase order-{order} {btype}-pass at {cutoff_hz} Hz"
+             + (" (per finite segment)" if by_segment else ""),
     )
