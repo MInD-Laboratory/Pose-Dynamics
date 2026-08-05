@@ -1,7 +1,7 @@
 # The canonical CSV format
 
-pose-dynamics supports **one** input format. Converting your estimator's output to
-it is the only barrier to entry, so this page is exact. Example converters (OpenPose,
+pose-dynamics reads **one** input format. Converting your estimator's output to it
+is the only setup step, so this page specifies it exactly. Example converters (OpenPose,
 ZED) are in `examples/` — copy and adapt one.
 
 ## The rule
@@ -87,5 +87,5 @@ Loading validates the header and body and fails with a message you can act on:
 | has a header but no rows | *"File has a header but no data rows…"* | Provide at least one frame. |
 | does not exist | *"File not found: … Check the path in your config…"* | Fix the path. |
 
-Every error names the offending columns or rows, so a non-programmer can act on it
-without reading the traceback.
+Every error names the offending columns or rows, so the fix is clear without reading
+the traceback.

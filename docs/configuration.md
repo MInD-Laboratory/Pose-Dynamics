@@ -4,8 +4,8 @@ Every parameter, its default, its units, and — where the paper gives guidance 
 what the paper recommends. Parameters are passed explicitly to the relevant
 function or dataclass; there is no global config singleton.
 
-Where the paper offers a *range* rather than a value, that is noted: these are the
-knobs you are expected to set for your data, not accept blindly. The case-study
+Where the paper offers a *range* rather than a value, that is noted — those are the
+parameters to set for your own data. The case-study
 configs (`pose_dynamics.case_studies.*.config`) show committed values for real data.
 
 ## The standard pipeline (`StudyConfig` + `run_study`)
@@ -57,7 +57,7 @@ with the same defaults.
 ## Linear kinematic metrics (`pose_dynamics.linear`)
 
 A standalone family — `load → preprocess → linear metrics` is a complete analysis;
-you need not run recurrence. Reductions (pose → scalars), no config required:
+recurrence is optional. Reductions (pose → scalars), no config required:
 
 | Function | Returns |
 |----------|---------|
@@ -77,7 +77,7 @@ question, and detrend rather than per-window z-score.
 |-----------|---------|-------|----------|
 | `max_missing_frac` | `0.30` | fraction | Trial-level threshold; exceeding it sets the trial's status to `on_exceed`. |
 | `per_keypoint_max_missing_frac` | `0.30` | fraction | A keypoint missing more than this is flagged as a candidate to drop (paper: drop a landmark missing ≳ 20–30% rather than reconstruct it). |
-| `on_exceed` | `"flag"` | — | `"retain"`, `"flag"`, or `"exclude"`. Nothing is dropped silently — flagged/excluded trials appear in the report. |
+| `on_exceed` | `"flag"` | — | `"retain"`, `"flag"`, or `"exclude"`. Flagged and excluded trials appear in the quality report. |
 
 ## Embedding selection (`select_embedding`)
 
@@ -109,10 +109,10 @@ Fixed across a study by default and written into every result's provenance.
 | `radius` | `None` | fraction of rescaled distance | For `fixed_radius`. Cases used **0.2** (auto), **0.3** (cross). Paper: a constant ε of ~15–25% of mean pairwise distance. |
 | `target_rec` | `None` | % | For `fixed_rrec`. Paper target %REC ≈ **2–5%**. |
 | `rescale` | `"mean"` | — | Rescale pairwise distances by their **mean** (paper default) / `"max"` / `"none"`. |
-| `norm` | `"zscore"` | — | The single normalization applied before embedding (`"zscore"`, `"minmax"`, `"center"`, `"none"`). Passed once — the framework never double-normalizes. |
+| `norm` | `"zscore"` | — | The single normalization applied before embedding (`"zscore"`, `"minmax"`, `"center"`, `"none"`). Applied once, before embedding. |
 | `theiler` | `None → τ` | frames | Auto-RQA excludes a band of width τ around the diagonal; cross-RQA forces **0**. |
 | `min_line` | `2` | frames | Minimum diagonal/vertical line length (l_min). Paper: start at 2; raise only if determinism ceilings (95–100%). Case 1 used 4. |
-| `bisect_tol`, `bisect_max_iter`, `radius_hi` | `0.05`, `50`, `2.0` | %, —, — | Radius-search tolerance, iteration cap, initial upper bound. Non-convergence is reported, never hidden. |
+| `bisect_tol`, `bisect_max_iter`, `radius_hi` | `0.05`, `50`, `2.0` | %, —, — | Radius-search tolerance, iteration cap, initial upper bound. Non-convergence is reported in the results. |
 
 ## Windowing (`make_windows`)
 

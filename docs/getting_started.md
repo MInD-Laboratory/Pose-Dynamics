@@ -10,8 +10,8 @@ pose-dynamics run      study.yaml    # 3. get features + metrics over the whole 
 ```
 
 Along the way you'll make two real choices — which keypoints/features you care about,
-and the two embedding parameters `(τ, m)` — and this guide is mostly about making
-those *honestly*. (Everything here also works from a notebook; see `run_dataset.ipynb`.)
+and the two embedding parameters `(τ, m)` — and this guide is mostly about how to
+make them well. (Everything here also works from a notebook; see `run_dataset.ipynb`.)
 
 ## Before you start: the one file format
 
@@ -34,19 +34,18 @@ plot of the skeleton with **every point labelled by its index**. Look at it: the
 head cluster, the wrists, the ankles will be obvious. Write down the indices you
 care about — you'll use them in the config.
 
-## Step 2 — Choose (τ, m): the honest part
+## Step 2 — Choose (τ, m)
 
 Recurrence analysis reconstructs movement in a *state space* built from two numbers:
-a delay **τ** and a dimension **m**. The package **will not pick them for you** — the
-paper argues automated picking is unreliable, so it shows you the evidence and you
-decide. Open **`quickstart.ipynb`**, run it on one of your files, and read the two
-curves:
+a delay **τ** and a dimension **m**. The package presents the evidence rather than
+picking for you, because automated minimum-picking is unreliable on empirical data.
+Open **`quickstart.ipynb`**, run it on one of your files, and read the two curves:
 
 - **AMI (for τ):** the curve drops then flattens. **Choose τ where it stops
   dropping** — the onset of the plateau. A clear dip (first minimum) is the easy
-  case. The honesty here: a *real* choice is a turn that shows up across many of your
-  signals, not a one-sample wiggle in a single noisy curve, and not blindly the
-  lowest point. If the curve never flattens, your data is probably oversampled —
+  case. A dependable choice is a turn that shows up across many of your signals,
+  rather than a one-sample wiggle in a single noisy curve or simply the lowest
+  point. If the curve never flattens, your data is probably oversampled —
   downsample and look again.
 - **FNN (for m):** the curve falls steeply then levels off. **Choose m at the elbow.**
   It usually levels at a small non-zero floor (measurement noise) — don't chase it to
@@ -62,7 +61,7 @@ pose-dynamics new-config study.yaml
 ```
 
 This writes a commented template. Open it and fill it in. Here is every field that
-matters and how to set it honestly:
+matters and how to set it:
 
 ```yaml
 data: ./data                 # your folder of canonical CSVs
@@ -98,7 +97,7 @@ features:
     params: {method: diff}
 ```
 
-**What to compute, and the one honesty decision in the analysis:**
+**What to compute, and the one judgement call in the analysis:**
 
 ```yaml
 compute_linear: true         # magnitude summaries (mean / std / rms / max)
@@ -135,13 +134,12 @@ You get:
   magnitude columns (`mean, std, rms, max`) and the recurrence columns
   (`perc_recur, perc_determ, laminarity, mean_line_length, maxl_found, entropy`,
   plus `radius_used`).
-- a printed **data-quality summary** — any flagged or excluded trials are reported,
-  never dropped silently.
+- a printed **data-quality summary** — any flagged or excluded trials are listed.
 
 Take `metrics.csv` into your own statistics — the package computes no inferential
 statistics itself.
 
-## Step 5 — Which metrics, honestly
+## Step 5 — Which metrics to report
 
 You now have many columns. Don't test all of them and keep whatever is significant.
 
