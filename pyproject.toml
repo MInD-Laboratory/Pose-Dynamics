@@ -4,11 +4,43 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pose-dynamics"
-version = "0.0.1"
+version = "0.1.0"
 description = "A reproducible framework for nonlinear (recurrence) analysis of pose data."
 readme = "README.md"
 requires-python = ">=3.12"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
+keywords = [
+    "pose estimation",
+    "recurrence quantification analysis",
+    "rqa",
+    "movement analysis",
+    "behavioral science",
+    "nonlinear dynamics",
+    "time series",
+]
+authors = [
+    { name = "Carter Sale" },
+    { name = "Margaret C. Macpherson" },
+    { name = "Gaurav Patil" },
+    { name = "Kelly Miles" },
+    { name = "Rachel W. Kallen" },
+    { name = "Sebastian Wallot" },
+    { name = "Michael J. Richardson" },
+]
+maintainers = [{ name = "Carter Sale" }]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Natural Language :: English",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Image Processing",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+]
 dependencies = [
     "numpy>=1.26",
     "pandas>=2.0",
@@ -18,14 +50,21 @@ dependencies = [
     "matplotlib>=3.8",
 ]
 
+[project.urls]
+Homepage = "https://github.com/MInD-Laboratory/Pose-Dynamics"
+Repository = "https://github.com/MInD-Laboratory/Pose-Dynamics"
+Documentation = "https://github.com/MInD-Laboratory/Pose-Dynamics/blob/main/docs/getting_started.md"
+Issues = "https://github.com/MInD-Laboratory/Pose-Dynamics/issues"
+Paper = "https://arxiv.org/abs/2604.01453"
+
 [project.scripts]
 pose-dynamics = "pose_dynamics.__main__:main"
 
 [project.optional-dependencies]
-viz = ["matplotlib>=3.8"]
+# matplotlib is a core dependency, so it is not repeated here.
 # Case-study reproduction notebooks only (stats are dataset-specific, not core):
-repro = ["matplotlib>=3.8", "statsmodels>=0.14", "jupyter"]
-dev = ["pytest>=8.0", "matplotlib>=3.8"]
+repro = ["statsmodels>=0.14", "jupyter"]
+dev = ["pytest>=8.0"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/pose_dynamics"]

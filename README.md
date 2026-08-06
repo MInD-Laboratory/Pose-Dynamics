@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/images/logo.svg" alt="pose-dynamics" width="520">
+  <img src="https://raw.githubusercontent.com/MInD-Laboratory/Pose-Dynamics/main/docs/images/logo.svg" alt="pose-dynamics" width="520">
 </p>
 
 # Pose-Dynamics
@@ -26,7 +26,7 @@ The primary interface is a notebook, and the key parameter choices are made by t
 researcher, from evidence the framework presents.
 
 <p align="center">
-  <img src="docs/images/checkpoint_and_rp.png" alt="A filter checkpoint and a recurrence plot" width="820">
+  <img src="https://raw.githubusercontent.com/MInD-Laboratory/Pose-Dynamics/main/docs/images/checkpoint_and_rp.png" alt="A filter checkpoint and a recurrence plot" width="820">
 </p>
 
 <p align="center"><em>Left: a preprocessing checkpoint (raw vs. filtered — smoothed, not flattened).
@@ -46,7 +46,7 @@ runs on bundled example data first, so you see it work before your own data is
 involved, and it teaches you to read each checkpoint and choose the two parameters
 the analysis needs.
 
-**To use your own data:** drop your [canonical CSV files](docs/canonical_format.md)
+**To use your own data:** drop your [canonical CSV files](https://github.com/MInD-Laboratory/Pose-Dynamics/blob/main/docs/canonical_format.md)
 into the `data/` folder next to this command (they appear in the notebook at
 `/work/data/`), then change the one marked cell.
 
@@ -55,7 +55,7 @@ into the `data/` folder next to this command (they appear in the notebook at
 
 ## Get features over a folder of CSVs — three commands
 
-New here? **Start with the [Getting started guide](docs/getting_started.md).** It
+New here? **Start with the [Getting started guide](https://github.com/MInD-Laboratory/Pose-Dynamics/blob/main/docs/getting_started.md).** It
 walks the whole workflow: no notebook, no code — inspect your data, write a config,
 run it over the folder.
 
@@ -66,19 +66,19 @@ pose-dynamics run      study.yaml    # 3. features + metrics for the whole folde
 ```
 
 This writes per-file **feature time series** and a tidy **metrics table** (magnitude
-+ recurrence). Ready-to-edit config templates are in [`configs/`](configs/).
++ recurrence). Ready-to-edit config templates are in [`configs/`](https://github.com/MInD-Laboratory/Pose-Dynamics/tree/main/configs/).
 
 ## Documentation
 
 | Document | For |
 |----------|-----|
-| [Pose analysis quick guide](docs/guide.html) | A decision-tree walkthrough of the whole field — acquisition, feature selection, pre-processing, and choosing between linear and recurrence analysis — for orienting before you touch a config. |
-| [Getting started](docs/getting_started.md) | The three-command workflow, writing a config, and choosing (τ, m). **Start here.** |
-| [Canonical format](docs/canonical_format.md) | The one input format. Read this to bring your own data. |
+| [Pose analysis quick guide](https://github.com/MInD-Laboratory/Pose-Dynamics/blob/main/docs/guide.html) | A decision-tree walkthrough of the whole field — acquisition, feature selection, pre-processing, and choosing between linear and recurrence analysis — for orienting before you touch a config. |
+| [Getting started](https://github.com/MInD-Laboratory/Pose-Dynamics/blob/main/docs/getting_started.md) | The three-command workflow, writing a config, and choosing (τ, m). **Start here.** |
+| [Canonical format](https://github.com/MInD-Laboratory/Pose-Dynamics/blob/main/docs/canonical_format.md) | The one input format. Read this to bring your own data. |
 | `notebooks/quickstart.ipynb` | Interactive: read each checkpoint and commit (τ, m) on one file. |
 | `notebooks/run_dataset.ipynb` | The same run from a notebook (edit a config cell). |
-| [Configuration reference](docs/configuration.md) | Every parameter, its default, units, and the paper's guidance. |
-| [Feature steps](docs/feature_steps.md) | The steps a feature pipeline is built from, and how to add your own. |
+| [Configuration reference](https://github.com/MInD-Laboratory/Pose-Dynamics/blob/main/docs/configuration.md) | Every parameter, its default, units, and the paper's guidance. |
+| [Feature steps](https://github.com/MInD-Laboratory/Pose-Dynamics/blob/main/docs/feature_steps.md) | The steps a feature pipeline is built from, and how to add your own. |
 
 ## Citation
 
