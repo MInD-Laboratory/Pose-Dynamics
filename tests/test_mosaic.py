@@ -581,7 +581,8 @@ def test_to_trial_individual_collapses_windows_and_keys_on_participant():
     assert "participant" not in df.columns
     # a trial's value is the mean of its windows
     key = dict(session="1", trial=1, camera="left", roi="arms")
-    got = trial.query(" and ".join(f"{k} == @key['{k}']" for k in key))["rms"].iloc[0]
+    mask = np.logical_and.reduce([trial[k] == v for k, v in key.items()])
+    got = trial.loc[mask, "rms"].iloc[0]
     want = df[(df.session == 1) & (df.trial == 1) & (df.camera == "left")]["rms"].mean()
     np.testing.assert_allclose(got, want, rtol=1e-9)
 
