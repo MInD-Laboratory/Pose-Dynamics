@@ -51,7 +51,11 @@ into the `data/` folder next to this command (they appear in the notebook at
 `/work/data/`), then change the one marked cell.
 
 *Prefer Python?* `pip install pose-dynamics` (3.12+; needs a C/C++ compiler for the
-`rqa-analysis` recurrence core), then open `notebooks/quickstart.ipynb`.
+`rqa-analysis` recurrence core). That installs the library and the `pose-dynamics`
+command, but **not** the notebooks — those live in the repository. Clone it, or
+download
+[`quickstart.ipynb`](https://github.com/MInD-Laboratory/Pose-Dynamics/blob/main/notebooks/quickstart.ipynb)
+on its own and run it alongside the installed package.
 
 ## Get features over a folder of CSVs — three commands
 
@@ -75,8 +79,8 @@ This writes per-file **feature time series** and a tidy **metrics table** (magni
 | [Pose analysis quick guide](https://github.com/MInD-Laboratory/Pose-Dynamics/blob/main/docs/guide.html) | A decision-tree walkthrough of the whole field — acquisition, feature selection, pre-processing, and choosing between linear and recurrence analysis — for orienting before you touch a config. |
 | [Getting started](https://github.com/MInD-Laboratory/Pose-Dynamics/blob/main/docs/getting_started.md) | The three-command workflow, writing a config, and choosing (τ, m). **Start here.** |
 | [Canonical format](https://github.com/MInD-Laboratory/Pose-Dynamics/blob/main/docs/canonical_format.md) | The one input format. Read this to bring your own data. |
-| `notebooks/quickstart.ipynb` | Interactive: read each checkpoint and commit (τ, m) on one file. |
-| `notebooks/run_dataset.ipynb` | The same run from a notebook (edit a config cell). |
+| [`notebooks/quickstart.ipynb`](https://github.com/MInD-Laboratory/Pose-Dynamics/blob/main/notebooks/quickstart.ipynb) | Interactive: read each checkpoint and commit (τ, m) on one file. In the repository, not the installed package. |
+| [`notebooks/run_dataset.ipynb`](https://github.com/MInD-Laboratory/Pose-Dynamics/blob/main/notebooks/run_dataset.ipynb) | The same run from a notebook (edit a config cell). In the repository, not the installed package. |
 | [Configuration reference](https://github.com/MInD-Laboratory/Pose-Dynamics/blob/main/docs/configuration.md) | Every parameter, its default, units, and the paper's guidance. |
 | [Feature steps](https://github.com/MInD-Laboratory/Pose-Dynamics/blob/main/docs/feature_steps.md) | The steps a feature pipeline is built from, and how to add your own. |
 
