@@ -18,11 +18,8 @@ on their own:
   in time* — its stability, coordination, and transitions, which amplitude measures
   cannot see.
 
-The last two are the paper's two-level framing — movement **magnitude** vs.
-**organization** — and are meant to be read together. It accompanies the methods
-paper [*Nonlinear methods for analyzing pose in behavioral
-research*](https://arxiv.org/abs/2604.01453) and implements everything the paper
-describes, including the three case studies.
+This package accompanies the methods paper [*Nonlinear methods for analyzing pose in behavioral
+research*](https://arxiv.org/abs/2604.01453) and implements the main stages the paper describes, including the three case studies.
 
 Every stage is **inspectable**: it returns an object you can plot and sanity-check.
 The primary interface is a notebook, and the key parameter choices are made by the
