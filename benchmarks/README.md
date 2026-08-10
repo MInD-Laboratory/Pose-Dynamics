@@ -26,18 +26,20 @@ behaviour is unchanged.
 
 ## What dominates cost
 
-A single recurrence computation compares all pairs of time points, so it costs
-**O(N²·d)** — quadratic in the number of frames `N`, and only linear in the
-dimensionality `d`. Dimensionality is the cheap axis in every case study.
+A single recurrence computation compares all pairs of time points in the signal it
+is handed, so it costs **O(N²·d)**, where `N` is the number of frames in that one
+computation and `d` its dimensionality. Cost is quadratic in `N` and only linear
+in `d`, so dimensionality is the cheap axis in every case study.
 
-What `N` refers to depends on whether the analysis is windowed. Cases 1 and 2 use
-60 s windows at 50% overlap, so `N` is capped at the window length (3,600 and
-1,800 frames respectively) and a longer recording simply adds windows — total
-cost grows linearly with duration. Case 3 runs recurrence over whole trials, so
-there `N` is the trial length and cost is quadratic in it.
+What differs between the case studies is how many frames reach one computation.
+Cases 1 and 2 analyse 60 s windows at 50% overlap, so `N` is fixed at the window
+length — 3,600 and 1,800 frames respectively — however long the trial runs, and a
+longer recording simply adds windows: total cost grows linearly with duration.
+Case 3 hands whole trials to a single computation, so its `N` is the trial length
+(1,058 frames) and its cost is quadratic in duration.
 
-The quadratic term therefore sets a ceiling on window length and memory rather
-than on total recording time.
+The quadratic term therefore bounds window length and memory rather than total
+recording time.
 
 ## End-to-end, per trial
 
@@ -61,7 +63,7 @@ separately: features + RQA is 94% of the per-trial total.
 Windowing caps `N` at a fixed 1,800 frames per window while the raw files stay
 large (60 Hz, 411 columns, 70–113 MB each), so data handling takes 73% of the
 per-trial total and features + CRQA 27%. The global Procrustes template adds a
-one-off pass over all 550 files.
+one-off pass over both partners' files in all 272 dyad-trials.
 
 ### Case 3 — Mirror Game
 

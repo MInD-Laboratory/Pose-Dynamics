@@ -93,7 +93,9 @@ def _mosaic_dyad(right_path, left_path):
     reported separately. Keep this in step with ``process_dyad`` if that changes.
 
     The global Procrustes template is a dataset-level fixed cost, not a per-trial one
-    (``TEMPLATE_SAMPLE=None`` builds it from every file), so it is excluded from the
+    (``TEMPLATE_SAMPLE=None`` builds it from both partners' files in every dyad-trial
+    ``run_reproduction`` discovers -- 544 of the 550 files, the other 6 being
+    single-camera session-trials it skips), so it is excluded from the
     per-trial total and reported separately -- the same treatment ``case1`` gives
     ``build_global_template``. Here it is built from this trial's own two files, which
     costs the same per window as the real dataset-wide template and keeps each trial
@@ -151,7 +153,7 @@ def _mosaic_dyad(right_path, left_path):
             {"raw_frames": raw_frames, "frames": n, "windows": n_windows, "crqa": n_crqa})
 
 
-def case2(mosaic_dir, n_trials=1, n_dyad_trials=272, n_files=550):
+def case2(mosaic_dir, n_trials=1, n_dyad_trials=272, n_files=544):
     """End-to-end MOSAIC cost, over the first ``n_trials`` dyad-trials.
 
     Trial length is bimodal in this dataset (~5 min and ~8 min recordings), so a
