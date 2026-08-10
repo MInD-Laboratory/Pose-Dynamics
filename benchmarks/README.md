@@ -26,10 +26,18 @@ behaviour is unchanged.
 
 ## What dominates cost
 
-Recurrence is computed over all pairs of time points, so cost is **O(N²·d)** —
-quadratic in the number of frames `N`, and only linear in the dimensionality `d`
-of the signal. Recording duration, not feature count, is the binding
-computational constraint.
+A single recurrence computation compares all pairs of time points, so it costs
+**O(N²·d)** — quadratic in the number of frames `N`, and only linear in the
+dimensionality `d`. Dimensionality is the cheap axis in every case study.
+
+What `N` refers to depends on whether the analysis is windowed. Cases 1 and 2 use
+60 s windows at 50% overlap, so `N` is capped at the window length (3,600 and
+1,800 frames respectively) and a longer recording simply adds windows — total
+cost grows linearly with duration. Case 3 runs recurrence over whole trials, so
+there `N` is the trial length and cost is quadratic in it.
+
+The quadratic term therefore sets a ceiling on window length and memory rather
+than on total recording time.
 
 ## End-to-end, per trial
 
@@ -45,8 +53,8 @@ to a shared frame count so their window boundaries line up in time.
 
 ### Case 1 — MATB
 
-Trials run ~16 minutes and every window is analysed separately, so the quadratic
-term sets the cost: features + RQA is 94% of the per-trial total.
+Trials run ~16 minutes, so a trial spans many 60 s windows and each is analysed
+separately: features + RQA is 94% of the per-trial total.
 
 ### Case 2 — MOSAIC
 
