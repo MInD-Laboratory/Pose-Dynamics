@@ -4,12 +4,12 @@ Computational-cost benchmark for pose-dynamics.
 Two parts:
   1. Microbenchmarks (synthetic): RQA and MdRQA scaling with signal length N and
      dimensionality, and the fixed-%REC (bisection) multiplier.
-  2. End-to-end per-trial cost for Case 1 (MATB) and Case 3 (Mirror Game), if the
-     data directories are given.
+  2. End-to-end per-trial cost for Case 1 (MATB), Case 2 (MOSAIC) and Case 3
+     (Mirror Game), if the data directories are given.
 
 Usage:
-    python benchmarks/benchmark.py                      # microbenchmarks only
-    python benchmarks/benchmark.py --matb DIR --mg DIR  # + end-to-end
+    python benchmarks/benchmark.py                                  # microbenchmarks only
+    python benchmarks/benchmark.py --matb DIR --mosaic DIR --mg DIR # + end-to-end
 """
 from __future__ import annotations
 
@@ -85,6 +85,111 @@ def case1(matb_dir):
     print(f"  per trial {total:.2f}s  ->  x216 ~ {total * 216 / 60:.1f} min")
 
 
+def _mosaic_dyad(right_path, left_path):
+    """Time one MOSAIC dyad-trial by stage; returns ``(load, preprocess, proc, info)``.
+
+    The stages are inlined rather than calling ``process_dyad``, which preprocesses
+    internally and would double-count that stage against the load/preprocess figures
+    reported separately. Keep this in step with ``process_dyad`` if that changes.
+
+    The global Procrustes template is a dataset-level fixed cost, not a per-trial one
+    (``TEMPLATE_SAMPLE=None`` builds it from every file), so it is excluded from the
+    per-trial total and reported separately -- the same treatment ``case1`` gives
+    ``build_global_template``. Here it is built from this trial's own two files, which
+    costs the same per window as the real dataset-wide template and keeps each trial
+    independently timeable.
+    """
+    from pose_dynamics.case_studies.mosaic.reproduce import (
+        _window_roi_speeds,
+        build_global_template,
+        cross_params,
+        load_mosaic_file,
+        preprocess_pose,
+        windowed_align,
+    )
+    from pose_dynamics.data.pose_sequence import PoseSequence
+
+    cp = cross_params()
+    t_load, t_prep, t_proc = [], [], []
+    template = None
+    for _ in range(3):
+        a = time.perf_counter()
+        right, roi_map = load_mosaic_file(right_path)
+        left, _ = load_mosaic_file(left_path)
+        t_load.append(time.perf_counter() - a)
+        raw_frames = right.n_frames
+
+        a = time.perf_counter()
+        right = preprocess_pose(right)
+        left = preprocess_pose(left)
+        t_prep.append(time.perf_counter() - a)
+
+        n = min(right.n_frames, left.n_frames)
+        right = PoseSequence(coords=right.coords[:n], keypoint_names=right.keypoint_names,
+                             frame_rate=right.frame_rate)
+        left = PoseSequence(coords=left.coords[:n], keypoint_names=left.keypoint_names,
+                            frame_rate=left.frame_rate)
+        if template is None:
+            template = build_global_template([right, left])
+
+        a = time.perf_counter()
+        n_crqa = n_windows = 0
+        for (w, aligned_r), (_, aligned_l) in zip(windowed_align(right, template),
+                                                  windowed_align(left, template)):
+            n_windows += 1
+            feats_r = _window_roi_speeds(aligned_r, right.keypoint_names, roi_map, right.frame_rate)
+            feats_l = _window_roi_speeds(aligned_l, left.keypoint_names, roi_map, left.frame_rate)
+            for roi in roi_map:
+                aw, bw = feats_r.get(f"{roi}_speed"), feats_l.get(f"{roi}_speed")
+                if not (np.all(np.isfinite(aw)) and np.all(np.isfinite(bw))):
+                    continue
+                run_cross_rqa(aw, bw, cp)
+                n_crqa += 1
+        t_proc.append(time.perf_counter() - a)
+
+    return (median(t_load), median(t_prep), median(t_proc),
+            {"raw_frames": raw_frames, "frames": n, "windows": n_windows, "crqa": n_crqa})
+
+
+def case2(mosaic_dir, n_trials=1, n_dyad_trials=272, n_files=550):
+    """End-to-end MOSAIC cost, over the first ``n_trials`` dyad-trials.
+
+    Trial length is bimodal in this dataset (~5 min and ~8 min recordings), so a
+    single trial misrepresents it; the full-dataset estimate below is therefore
+    built from a per-window fit rather than by multiplying one trial's total.
+    """
+    from pose_dynamics.case_studies.mosaic.reproduce import parse_file
+
+    by_key = {}
+    for p in sorted(glob.glob(f"{mosaic_dir}/S*_T*_*.csv")):
+        if p.replace("\\", "/").rsplit("/", 1)[-1].startswith("._"):
+            continue
+        s, t, cam = parse_file(p)
+        by_key.setdefault((s, t), {})[cam] = p
+    keys = sorted(k for k, v in by_key.items() if {"left", "right"} <= set(v))[:n_trials]
+
+    print("\n=== CASE 2 (MOSAIC): per dyad-trial ===")
+    rows = []
+    for (s, t) in keys:
+        ld, pr, pc, info = _mosaic_dyad(by_key[(s, t)]["right"], by_key[(s, t)]["left"])
+        total = ld + pr + pc
+        rows.append((info["windows"], ld, pr, pc, total))
+        print(f"  S{s:03d}_T{t}: {info['raw_frames']} frames @60Hz -> "
+              f"{info['frames']} @30Hz, {info['windows']} windows, "
+              f"{info['crqa']} CRQA runs (<=3 ROIs x windows)")
+        print(f"    load x2 {ld:.2f}s | preprocess x2 {pr:.2f}s | "
+              f"align+features+CRQA {pc:.2f}s | per dyad-trial {total:.2f}s")
+
+    per_window = median(r[4] / r[0] for r in rows)
+    per_file = median((r[1] + r[2]) / 2 for r in rows)
+    print(f"  median {per_window:.2f}s per window; {sum(r[4] for r in rows) / len(rows):.2f}s "
+          f"mean per dyad-trial over {len(rows)} trial(s)")
+    print(f"  full dataset ({n_dyad_trials} dyad-trials, ~11.5 windows median) ~ "
+          f"{per_window * 11.5 * n_dyad_trials / 60:.0f} min")
+    print(f"  + global template pass: {per_file:.2f}s/file x{n_files} ~ "
+          f"{per_file * n_files / 60:.0f} min (one-off, dataset-level)")
+
+
 def case3(mg_dir):
     import re
     from pose_dynamics.case_studies.mirror_game import load_and_resample
@@ -110,10 +215,17 @@ def case3(mg_dir):
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--matb")
+    ap.add_argument("--mosaic")
+    ap.add_argument("--mosaic-trials", type=int, default=1,
+                    help="dyad-trials to time for Case 2 (length is bimodal; >=4 recommended)")
     ap.add_argument("--mg")
+    ap.add_argument("--skip-micro", action="store_true")
     args = ap.parse_args()
-    microbenchmarks()
+    if not args.skip_micro:
+        microbenchmarks()
     if args.matb:
         case1(args.matb)
+    if args.mosaic:
+        case2(args.mosaic, n_trials=args.mosaic_trials)
     if args.mg:
         case3(args.mg)

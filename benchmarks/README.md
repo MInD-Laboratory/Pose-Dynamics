@@ -5,13 +5,24 @@ sense of what the analyses cost and where the limits are. Everything here is
 reproducible with [`benchmark.py`](benchmark.py):
 
 ```bash
-python benchmarks/benchmark.py                          # microbenchmarks only
-python benchmarks/benchmark.py --matb DIR --mg DIR      # + end-to-end case studies
+python benchmarks/benchmark.py                                  # microbenchmarks only
+python benchmarks/benchmark.py --matb DIR                       # + Case 1
+python benchmarks/benchmark.py --mosaic DIR --mosaic-trials 4   # + Case 2
+python benchmarks/benchmark.py --mg DIR                         # + Case 3
 ```
 
-**Reference hardware.** Apple M4 Pro, 24 GB RAM, macOS 26.5, Python 3.12,
-single-threaded. Times are medians of three repetitions. A mid-range laptop
-should be read as roughly 2–3× slower; the scaling behaviour is unchanged.
+## Machines
+
+Each case study was timed on the machine holding its recordings. All runs are
+single-threaded.
+
+- **Machine A** — Apple M4 Pro, 24 GB RAM, macOS 26.5, Python 3.12.
+  Cases 1 and 3, and every microbenchmark below.
+- **Machine B** — AMD Ryzen AI Max+ 395 (16 cores), 64 GB RAM,
+  Windows 11 Pro 26200, Python 3.13. Case 2.
+
+A mid-range laptop should be read as roughly 2–3× slower than either; the scaling
+behaviour is unchanged.
 
 ## What dominates cost
 
@@ -22,16 +33,32 @@ computational constraint.
 
 ## End-to-end, per trial
 
-| Case | Signal | Frames | Load | Preprocess | Features + RQA | Per trial | Full dataset |
-|---|---|---|---|---|---|---|---|
-| 1 — MATB (2D facial) | 1 participant, windowed | 28,835 | 0.25 s | 0.52 s | 10.66 s | **11.4 s** | ≈ 41 min (216 trials) |
-| 3 — Mirror Game (3D full body) | dyad, 5 keypoints | 1,058 | 0.02 s | 0.01 s | 0.20 s | **0.23 s** | ≈ 50 s (210 dyad-trials) |
+| Case | Machine | Signal | Frames / participant | Load | Preprocess | Features + RQA | Per trial | Full dataset |
+|---|---|---|---|---|---|---|---|---|
+| 1 — MATB (2D facial) | A | 1 participant, windowed | 28,835 | 0.25 s | 0.52 s | 10.66 s | **11.4 s** | ≈ 41 min (216 trials) |
+| 2 — MOSAIC (2D body+face) | B | dyad, 3 ROIs, windowed | 11,700 | 1.12 s | 1.06 s | 0.79 s | **2.99 s** | ≈ 14 min (272 dyad-trials) + ≈ 10 min template |
+| 3 — Mirror Game (3D full body) | A | dyad, 5 keypoints | 1,058 | 0.02 s | 0.01 s | 0.20 s | **0.23 s** | ≈ 50 s (210 dyad-trials) |
 
-Case 1 is the more expensive of the two despite using a smaller state space,
-because its trials are ~16 minutes long and every window is analysed
-separately — a direct consequence of the quadratic term.
+Cases 2 and 3 are dyadic: both partners are loaded and processed per trial, so
+their Load and Preprocess figures cover two files, and both partners are trimmed
+to a shared frame count so their window boundaries line up in time.
 
-Case 2 (MOSAIC) is not yet covered; see the open pull request adding it.
+### Case 1 — MATB
+
+Trials run ~16 minutes and every window is analysed separately, so the quadratic
+term sets the cost: features + RQA is 94% of the per-trial total.
+
+### Case 2 — MOSAIC
+
+Windowing caps `N` at a fixed 1,800 frames per window while the raw files stay
+large (60 Hz, 411 columns, 70–113 MB each), so data handling takes 73% of the
+per-trial total and features + CRQA 27%. The global Procrustes template adds a
+one-off pass over all 550 files.
+
+### Case 3 — Mirror Game
+
+Trials are ~35 s, so `N` stays small and the whole pipeline runs in a fraction of
+a second; features + RQA is 87% of the per-trial total.
 
 ## Scaling with recording length and dimensionality
 
