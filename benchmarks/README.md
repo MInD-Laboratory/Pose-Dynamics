@@ -18,8 +18,8 @@ single-threaded.
 
 - **Machine A** — Apple M4 Pro, 24 GB RAM, macOS 26.5, Python 3.12.
   Cases 1 and 3, and every microbenchmark below.
-- **Machine B** — AMD Ryzen AI Max+ 395 (16 cores), 64 GB RAM,
-  Windows 11 Pro 26200, Python 3.13. Case 2.
+- **Machine B** — AMD Ryzen AI Max+ 395, 64 GB RAM, Windows 11 Pro 26200,
+  Python 3.13. Case 2.
 
 A mid-range laptop should be read as roughly 2–3× slower than either; the scaling
 behaviour is unchanged.
