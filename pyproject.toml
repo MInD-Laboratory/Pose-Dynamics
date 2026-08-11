@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pose-dynamics"
-version = "0.1.0"
+version = "0.1.1"
 description = "A reproducible framework for nonlinear (recurrence) analysis of pose data."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -65,6 +65,24 @@ pose-dynamics = "pose_dynamics.__main__:main"
 # Case-study reproduction notebooks only (stats are dataset-specific, not core):
 repro = ["statsmodels>=0.14", "jupyter"]
 dev = ["pytest>=8.0"]
+
+[tool.hatch.build.targets.sdist]
+# Explicit list: the default sweeps in the case-study reproduction notebooks
+# (~1.7 MB of embedded cell outputs), which belong on GitHub, not in the sdist.
+include = [
+    "src/pose_dynamics",
+    "tests",
+    "configs",
+    "docs",
+    "examples",
+    "benchmarks",
+    "docker",
+    "Dockerfile",
+    "docker-compose.yml",
+    "README.md",
+    "LICENSE",
+    "pyproject.toml",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/pose_dynamics"]
