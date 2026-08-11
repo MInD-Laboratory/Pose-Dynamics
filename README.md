@@ -84,6 +84,27 @@ This writes per-file **feature time series** and a tidy **metrics table** (magni
 | [Configuration reference](https://github.com/MInD-Laboratory/Pose-Dynamics/blob/main/docs/configuration.md) | Every parameter, its default, units, and the paper's guidance. |
 | [Feature steps](https://github.com/MInD-Laboratory/Pose-Dynamics/blob/main/docs/feature_steps.md) | The steps a feature pipeline is built from, and how to add your own. |
 
+## Case study results
+
+The full result tables for the three case studies in the paper — every measure,
+model, and robustness check, not only the effects the manuscript quotes. Each page
+is a self-contained HTML file: download it and open it in a browser, or regenerate
+it from the reporting script beside it.
+
+| Page | Built by | Contents |
+|------|----------|----------|
+| [`case1_results.html`](https://github.com/MInD-Laboratory/Pose-Dynamics/blob/main/case1_results.html) | [`examples/apa_report_case1.py`](https://github.com/MInD-Laboratory/Pose-Dynamics/blob/main/examples/apa_report_case1.py) | Case 1 (MATB), 2D facial pose: descriptives and cognitive-load contrasts for all twelve signals, gaze–head cross-recurrence at both minimum line lengths, and the radius, (τ, m), and Theiler-window sensitivity checks. |
+| [`case2_results.html`](https://github.com/MInD-Laboratory/Pose-Dynamics/blob/main/case2_results.html) | [`examples/apa_report_case2.py`](https://github.com/MInD-Laboratory/Pose-Dynamics/blob/main/examples/apa_report_case2.py) | Case 2 (MOSAIC), 2D dyadic upper body: individual and dyadic measures by ROI and background-noise condition, condition contrasts, and Tukey-adjusted pairwise comparisons. |
+| [`case3_results.html`](https://github.com/MInD-Laboratory/Pose-Dynamics/blob/main/case3_results.html) | [`examples/apa_report_case3.py`](https://github.com/MInD-Laboratory/Pose-Dynamics/blob/main/examples/apa_report_case3.py) | Case 3 (Mirror Game), 3D dyadic full body: kinematics by condition and role, keypoint-wise and multidimensional cross-recurrence, the surrogate-pair baseline, auto-recurrence, and the radius and embedding grids. |
+
+The scripts read the CSV artifacts the case-study notebooks write, so a page can be
+rebuilt without the raw recordings:
+
+```bash
+python examples/apa_report_case1.py --out case1_results.html
+python examples/apa_report_case3.py --out case3_results.html
+```
+
 ## Citation
 
 If you use this software, please cite the accompanying paper:
