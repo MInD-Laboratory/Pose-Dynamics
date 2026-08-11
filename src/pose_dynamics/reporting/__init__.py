@@ -12,6 +12,7 @@ See :mod:`pose_dynamics.reporting.apa` for the formatting rules it applies.
 from .apa import (
     Table,
     describe_by,
+    fmt_bounded,
     fmt_int,
     fmt_num,
     fmt_p,
@@ -23,6 +24,7 @@ from .apa import (
 __all__ = [
     "Table",
     "describe_by",
+    "fmt_bounded",
     "fmt_int",
     "fmt_num",
     "fmt_p",

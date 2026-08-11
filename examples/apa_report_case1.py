@@ -48,7 +48,8 @@ import pandas as pd
 
 from pose_dynamics.case_studies.matb import config as CFG
 from pose_dynamics.case_studies.matb.reproduce import CONDITION_ORDER
-from pose_dynamics.reporting import Table, describe_by, fmt_num, fmt_signed, render_report
+from pose_dynamics.reporting import (Table, describe_by, fmt_bounded, fmt_num,
+                                     fmt_signed, render_report)
 
 NB = Path(__file__).resolve().parent.parent / "notebooks"
 
@@ -386,6 +387,96 @@ def _noted(table: Table, note: str) -> Table:
 
 
 # ----------------------------------------------------------------------
+# Redundancy among the recurrence measures
+#
+# Reviewer 2 asked whether the reported RQA measures are correlated with one
+# another (Comment 12e). They are, heavily, so the answer belongs in the report
+# rather than in the response letter alone. Correlations are Spearman -- several
+# of these measures are bounded and skewed, so a rank statistic is the honest
+# summary -- computed within each signal over analysis windows, then summarised
+# across signals, because a correlation pooled over signals would confound
+# between-signal differences with the within-signal redundancy at issue.
+# ----------------------------------------------------------------------
+def _measure_corrs(window: pd.DataFrame, prefixes: list[str],
+                   measures: list[str]) -> dict[tuple[int, int], np.ndarray]:
+    """Per-signal Spearman correlations for every measure pair, keyed by index pair."""
+    out: dict[tuple[int, int], list[float]] = {}
+    for prefix in prefixes:
+        cols = [f"{prefix}_{m}" for m in measures]
+        block = window[cols].apply(pd.to_numeric, errors="coerce")
+        rho = block.corr(method="spearman").to_numpy()
+        for i in range(len(measures)):
+            for j in range(i + 1, len(measures)):
+                out.setdefault((i, j), []).append(rho[i, j])
+    return {k: np.asarray(v, dtype=float) for k, v in out.items()}
+
+
+def correlation_table(window: pd.DataFrame, prefixes: list[str], measures: list[str],
+                      labels: dict[str, str], number: str, title: str,
+                      note: str) -> Table:
+    """Lower-triangle matrix of median across-signal correlations among measures."""
+    corrs = _measure_corrs(window, prefixes, measures)
+    rows = []
+    for i, m in enumerate(measures):
+        row = {"measure": f"{i + 1}. {labels[m]}"}
+        for j in range(len(measures)):
+            key = (j, i) if j < i else (i, j)
+            row[f"c{j + 1}"] = np.median(corrs[key]) if j < i else np.nan
+        rows.append(row)
+    cols = {"measure": "Measure",
+            **{f"c{j + 1}": str(j + 1) for j in range(len(measures))}}
+    return Table(
+        number=number, title=title, frame=pd.DataFrame(rows), columns=cols,
+        # Three decimals, not APA's usual two: several of these sit above .99, and
+        # at two decimals they round to 1.00 and read as identities rather than as
+        # very high correlations.
+        formatters={"measure": "html",
+                    **{f"c{j + 1}": (lambda v: fmt_bounded(v, 3))
+                       for j in range(len(measures))}},
+        note=note, align={"measure": "left"},
+    )
+
+
+def dimensionality_table(window: pd.DataFrame, prefixes: list[str], measures: list[str],
+                         labels: dict[str, str], number: str, title: str,
+                         note: str) -> Table:
+    """How many independent dimensions the measures span, per signal.
+
+    A PCA on the rank-transformed measures, which keeps the components consistent
+    with the Spearman correlations in the preceding table. ``dimensions`` is the
+    participation ratio, the standard continuous read of how many components carry
+    appreciable variance; unlike a count at a fixed cutoff it does not jump when one
+    eigenvalue crosses a threshold.
+    """
+    rows = []
+    for prefix in prefixes:
+        block = (window[[f"{prefix}_{m}" for m in measures]]
+                 .apply(pd.to_numeric, errors="coerce").dropna())
+        ranked = block.rank()
+        z = (ranked - ranked.mean()) / ranked.std()
+        ev = np.linalg.eigvalsh(np.cov(z.to_numpy().T))[::-1]
+        ev = ev[ev > 1e-12]
+        frac = ev / ev.sum()
+        rows.append({
+            "signal": labels[prefix],
+            "pc1": 100 * frac[0],
+            "pc12": 100 * frac[:2].sum(),
+            "k95": int(np.searchsorted(np.cumsum(frac), 0.95) + 1),
+            "dims": 1 / np.sum(frac ** 2),
+            "n": len(block),
+        })
+    return Table(
+        number=number, title=title, frame=pd.DataFrame(rows),
+        columns={"signal": "Signal", "pc1": "PC1 %", "pc12": "PC1–2 %",
+                 "k95": "Components for 95%", "dims": "Effective dimensions",
+                 "n": "<i>n</i>"},
+        formatters={"pc1": "num2", "pc12": "num2", "k95": "int",
+                    "dims": "num2", "n": "int"},
+        note=note, align={"signal": "left"},
+    )
+
+
+# ----------------------------------------------------------------------
 def build(window: pd.DataFrame, effects: pd.DataFrame, radius: pd.DataFrame | None,
           tau: pd.DataFrame | None, theiler: pd.DataFrame | None) -> list:
     """The tables, and nothing else -- no prose sections.
@@ -462,7 +553,67 @@ def build(window: pd.DataFrame, effects: pd.DataFrame, radius: pd.DataFrame | No
             "The Theiler window excludes the diagonal band of temporally adjacent "
             "points; <i>l</i><sub>min</sub> sets the shortest run of recurrent points "
             "counted as a diagonal line. " + window_desc))
+        n += 1
+
+    cross_prefixes = [f"crqa_l{CROSS_MINL[0]}_{p}" for p, _ in CFG.CROSS_PAIRS]
+    cross_prefix_labels = {f"crqa_l{CROSS_MINL[0]}_{p}": lbl
+                           for p, lbl in pair_labels.items()}
+    corr_note = (
+        "Spearman correlations, computed within each signal over analysis windows "
+        "and reported as the median across signals; the spread across signals is "
+        "given in the text below. Measures are numbered as in the stub. "
+        "Correlations are among the measures, not among the signals: a cell says "
+        "how far two measures duplicate each other within a signal.")
+    blocks += [
+        correlation_table(
+            window, SIGNALS, RQA_CORE, RQA_LABEL, str(n),
+            "Intercorrelations among the auto-recurrence measures",
+            corr_note + f" Median over the {len(SIGNALS)} signals in Table 3. "
+            + _corr_summary(window, SIGNALS, RQA_CORE, RQA_LABEL)),
+        correlation_table(
+            window, cross_prefixes, RQA_CORE, RQA_LABEL, str(n + 1),
+            "Intercorrelations among the cross-recurrence measures",
+            corr_note + f" Median over the {len(cross_prefixes)} gaze-head pairings "
+            f"in Table 4, at <i>l</i><sub>min</sub> = {CROSS_MINL[0]}. "
+            + _corr_summary(window, cross_prefixes, RQA_CORE, RQA_LABEL)),
+        dimensionality_table(
+            window, SIGNALS + cross_prefixes, RQA_CORE,
+            {**signal_labels, **cross_prefix_labels}, str(n + 2),
+            "Dimensionality of the auto- and cross-recurrence measures by signal",
+            "Principal components of the eight rank-transformed recurrence "
+            "measures within each signal, auto-recurrence for the first twelve rows "
+            "and cross-recurrence for the last three. A first component carrying most of the "
+            "variance means the measures are largely restating one quantity. "
+            "Effective dimensions is the participation ratio; <i>n</i> is the "
+            "windows with all eight measures present."),
+    ]
     return blocks
+
+
+def _corr_summary(window: pd.DataFrame, prefixes: list[str], measures: list[str],
+                  labels: dict[str, str]) -> str:
+    """The sentence a reader needs to read the matrix: what is redundant, what is not."""
+    corrs = _measure_corrs(window, prefixes, measures)
+    medians = {k: float(np.median(v)) for k, v in corrs.items()}
+    strong = sum(1 for v in medians.values() if abs(v) > 0.90)
+    top = max(medians, key=lambda k: abs(medians[k]))
+    per_measure = {
+        i: max(abs(v) for (a, b), v in medians.items() if i in (a, b))
+        for i in range(len(measures))
+    }
+    distinct = sorted((i for i, v in per_measure.items() if v < 0.90),
+                      key=lambda i: per_measure[i])
+    lead = (f"{strong} of the {len(medians)} pairs exceed |<i>r</i><sub>s</sub>| = .90, "
+            f"the strongest being {labels[measures[top[0]]]} with "
+            f"{labels[measures[top[1]]]} at {fmt_bounded(medians[top], 3)}.")
+    if not distinct:
+        return lead
+    named = ", ".join(
+        f"{labels[measures[i]]} (largest {fmt_bounded(per_measure[i], 3)})" for i in distinct)
+    return (lead + " The measures that stay separable from every other measure are "
+            + named + "; the rest form one block that moves together, so effects "
+            "reported on several of them should be read as one result rather than "
+            "as independent findings.")
 
 
 def main() -> None:
