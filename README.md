@@ -76,7 +76,7 @@ This writes per-file **feature time series** and a tidy **metrics table** (magni
 
 | Document | For |
 |----------|-----|
-| [Pose analysis quick guide](https://github.com/MInD-Laboratory/Pose-Dynamics/blob/main/docs/guide.html) | A decision-tree walkthrough of the whole field — acquisition, feature selection, pre-processing, and choosing between linear and recurrence analysis — for orienting before you touch a config. |
+| [Pose analysis quick guide](https://mind-laboratory.github.io/Pose-Dynamics/guide.html) | A decision-tree walkthrough of the whole field — acquisition, feature selection, pre-processing, and choosing between linear and recurrence analysis — for orienting before you touch a config. |
 | [Getting started](https://github.com/MInD-Laboratory/Pose-Dynamics/blob/main/docs/getting_started.md) | The three-command workflow, writing a config, and choosing (τ, m). **Start here.** |
 | [Canonical format](https://github.com/MInD-Laboratory/Pose-Dynamics/blob/main/docs/canonical_format.md) | The one input format. Read this to bring your own data. |
 | [`notebooks/quickstart.ipynb`](https://github.com/MInD-Laboratory/Pose-Dynamics/blob/main/notebooks/quickstart.ipynb) | Interactive: read each checkpoint and commit (τ, m) on one file. In the repository, not the installed package. |
@@ -93,9 +93,9 @@ it from the reporting script beside it.
 
 | Page | Built by | Contents |
 |------|----------|----------|
-| [`case1_results.html`](https://github.com/MInD-Laboratory/Pose-Dynamics/blob/main/case1_results.html) | [`examples/apa_report_case1.py`](https://github.com/MInD-Laboratory/Pose-Dynamics/blob/main/examples/apa_report_case1.py) | Case 1 (MATB), 2D facial pose: descriptives and cognitive-load contrasts for all twelve signals, gaze–head cross-recurrence at both minimum line lengths, and the radius, (τ, m), and Theiler-window sensitivity checks. |
-| [`case2_results.html`](https://github.com/MInD-Laboratory/Pose-Dynamics/blob/main/case2_results.html) | [`examples/apa_report_case2.py`](https://github.com/MInD-Laboratory/Pose-Dynamics/blob/main/examples/apa_report_case2.py) | Case 2 (MOSAIC), 2D dyadic upper body: individual and dyadic measures by ROI and background-noise condition, condition contrasts, and Tukey-adjusted pairwise comparisons. |
-| [`case3_results.html`](https://github.com/MInD-Laboratory/Pose-Dynamics/blob/main/case3_results.html) | [`examples/apa_report_case3.py`](https://github.com/MInD-Laboratory/Pose-Dynamics/blob/main/examples/apa_report_case3.py) | Case 3 (Mirror Game), 3D dyadic full body: kinematics by condition and role, keypoint-wise and multidimensional cross-recurrence, the surrogate-pair baseline, auto-recurrence, and the radius and embedding grids. |
+| [`case1_results.html`](https://mind-laboratory.github.io/Pose-Dynamics//case1_results.html) | [`examples/apa_report_case1.py`](https://github.com/MInD-Laboratory/Pose-Dynamics/blob/main/examples/apa_report_case1.py) | Case 1 (MATB), 2D facial pose: descriptives and cognitive-load contrasts for all twelve signals, gaze–head cross-recurrence at both minimum line lengths, and the radius, (τ, m), and Theiler-window sensitivity checks. |
+| [`case2_results.html`](https://mind-laboratory.github.io/Pose-Dynamics/case2_results.html) | [`examples/apa_report_case2.py`](https://github.com/MInD-Laboratory/Pose-Dynamics/blob/main/examples/apa_report_case2.py) | Case 2 (MOSAIC), 2D dyadic upper body: individual and dyadic measures by ROI and background-noise condition, condition contrasts, and Tukey-adjusted pairwise comparisons. |
+| [`case3_results.html`](https://mind-laboratory.github.io/Pose-Dynamics/case3_results.html) | [`examples/apa_report_case3.py`](https://github.com/MInD-Laboratory/Pose-Dynamics/blob/main/examples/apa_report_case3.py) | Case 3 (Mirror Game), 3D dyadic full body: kinematics by condition and role, keypoint-wise and multidimensional cross-recurrence, the surrogate-pair baseline, auto-recurrence, and the radius and embedding grids. |
 
 The scripts read the CSV artifacts the case-study notebooks write, so a page can be
 rebuilt without the raw recordings:
