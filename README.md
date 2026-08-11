@@ -76,7 +76,7 @@ This writes per-file **feature time series** and a tidy **metrics table** (magni
 
 | Document | For |
 |----------|-----|
-| [Pose analysis quick guide](https://mind-laboratory.github.io/Pose-Dynamics/guide.html) | A decision-tree walkthrough of the whole field — acquisition, feature selection, pre-processing, and choosing between linear and recurrence analysis — for orienting before you touch a config. |
+| [Pose analysis quick guide](https://mind-laboratory.github.io/Pose-Dynamics/docs/guide.html) | A decision-tree walkthrough of the whole field — acquisition, feature selection, pre-processing, and choosing between linear and recurrence analysis — for orienting before you touch a config. |
 | [Getting started](https://github.com/MInD-Laboratory/Pose-Dynamics/blob/main/docs/getting_started.md) | The three-command workflow, writing a config, and choosing (τ, m). **Start here.** |
 | [Canonical format](https://github.com/MInD-Laboratory/Pose-Dynamics/blob/main/docs/canonical_format.md) | The one input format. Read this to bring your own data. |
 | [`notebooks/quickstart.ipynb`](https://github.com/MInD-Laboratory/Pose-Dynamics/blob/main/notebooks/quickstart.ipynb) | Interactive: read each checkpoint and commit (τ, m) on one file. In the repository, not the installed package. |
