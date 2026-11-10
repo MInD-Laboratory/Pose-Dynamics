@@ -11,6 +11,9 @@ no delay embedding: each system's channels are the state-space axes, and a
 recurrence marks when the follower's state matches a state the leader
 occupied (at any time).
 
+It also relabels the delay axes of the Auto-RQA and Cross-RQA rows from
+"x(t-T)", "x(t-2T)" to "x(t−τ)", "x(t−2τ)" to match the manuscript's notation.
+
 Panel positions are measured in pixels from the MdRQA row of the original,
 shifted down by one row pitch, so the new row lines up with the others.
 
@@ -171,8 +174,44 @@ def draw_row(W, H):
     return Image.fromarray(row)
 
 
+# Old delay-axis labels in the base image: pixel boxes (x0, x1, y0, y1) to
+# clear, and where to draw the replacement (centre x, centre y, rotation).
+TAU_LABELS = [
+    # Auto-RQA row
+    dict(text="x(t\u22122\u03c4)", clear=[(1230, 1263, 250, 330)], at=(1246, 290, 90)),
+    dict(text="x(t\u2212\u03c4)", clear=[(1167, 1200, 452, 478), (1160, 1180, 474, 492),
+                                (1147, 1174, 481, 507)], at=(1173, 480, 52)),
+    # Cross-RQA row
+    dict(text="x(t\u22122\u03c4)", clear=[(1235, 1268, 749, 829)], at=(1251, 789, 90)),
+    dict(text="x(t\u2212\u03c4)", clear=[(1154, 1186, 950, 977), (1133, 1167, 971, 1007)],
+         at=(1160, 979, 52)),
+]
+
+
+def fix_tau_labels(img):
+    """Replace the "T" delay labels with tau (see TAU_LABELS)."""
+    W, H = img.size
+    px = np.asarray(img).copy()
+    for lab in TAU_LABELS:
+        for x0, x1, y0, y1 in lab["clear"]:
+            px[y0:y1, x0:x1] = 0
+    fig = plt.figure(figsize=(W / DPI, H / DPI), dpi=DPI)
+    fig.patch.set_alpha(0)
+    for lab in TAU_LABELS:
+        x, y, rot = lab["at"]
+        fig.text(x / W, 1 - y / H, lab["text"], rotation=rot, ha="center",
+                 va="center", rotation_mode="anchor", fontsize=LABEL_FS + 2,
+                 fontfamily=SERIF)
+    fig.canvas.draw()
+    overlay = Image.fromarray(np.asarray(fig.canvas.buffer_rgba()).copy())
+    plt.close(fig)
+    out = Image.fromarray(px)
+    out.alpha_composite(overlay)
+    return out
+
+
 def main():
-    src = Image.open(SRC).convert("RGBA")
+    src = fix_tau_labels(Image.open(SRC).convert("RGBA"))
     W, H0 = src.size
     row = draw_row(W, ROW_PITCH)
     out = Image.new("RGBA", (W, H0 + ROW_PITCH), (0, 0, 0, 0))
